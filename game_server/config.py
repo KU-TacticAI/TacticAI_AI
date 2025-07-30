@@ -36,21 +36,28 @@ class Config:
         self.RABBITMQ_PASSWORD = os.getenv('RABBITMQ_PASSWORD', 'testuserpw')
         
         # MongoDB 설정
-        self.MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017/')
-        self.MONGO_DB_NAME = os.getenv('MONGO_DB_NAME', 'game_server_db')
+        self.MONGO_HOST = os.getenv('MONGO_HOST', 'localhost')
+        self.MONGO_PORT = self._get_int('MONGO_PORT', 27017)
+        self.MONGO_DB_NAME = os.getenv('MONGO_DB_NAME', 'database')
+        self.MONGO_USER = os.getenv('MONGO_USER', 'testuser')
+        self.MONGO_PASSWORD = os.getenv('MONGO_PASSWORD', 'testuserpw')
+        
+        # MySQL 설정
+        self.MYSQL_HOST = os.getenv('MYSQL_HOST', 'localhost')
+        self.MYSQL_PORT = self._get_int('MYSQL_PORT', 3306)
+        self.MYSQL_USER = os.getenv('MYSQL_USER', 'testuser')
+        self.MYSQL_PASSWORD = os.getenv('MYSQL_PASSWORD', 'testuserpw')
+        self.MYSQL_DATABASE = os.getenv('MYSQL_DATABASE', 'database')
         
         # 성능 설정
         self.MAX_CONCURRENT_GAMES = self._get_int('MAX_CONCURRENT_GAMES', 500000)
         self.AI_REQUEST_TIMEOUT = self._get_int('AI_REQUEST_TIMEOUT', 30)
         self.EXTERNAL_SYNC_BATCH_SIZE = self._get_int('EXTERNAL_SYNC_BATCH_SIZE', 100)
         
-        # 게임 세션 설정
-        self.GAME_SESSION_TIMEOUT_MINUTES = self._get_int('GAME_SESSION_TIMEOUT_MINUTES', 30)
-        
         # RabbitMQ 동시 처리량 제어
-        self.RABBITMQ_PREFETCH_COUNT = self._get_int('RABBITMQ_PREFETCH_COUNT', 10)
         self.GAME_REQUEST_PREFETCH_COUNT = self._get_int('GAME_REQUEST_PREFETCH_COUNT', 10)
         self.RESPONSE_PREFETCH_COUNT = self._get_int('RESPONSE_PREFETCH_COUNT', 15)
+        self.RABBITMQ_PREFETCH_COUNT = int(os.environ.get("RABBITMQ_PREFETCH_COUNT", 10))
         
         # 외부 시스템 설정
         self.EXTERNAL_API_URL = os.getenv('EXTERNAL_API_URL', '')
@@ -61,9 +68,7 @@ class Config:
         self.LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
         self.DEBUG = self._get_bool('DEBUG', False)
         
-        # 데이터베이스 연결 풀 설정
-        self.DB_POOL_SIZE = self._get_int('DB_POOL_SIZE', 10)
-        self.DB_MAX_OVERFLOW = self._get_int('DB_MAX_OVERFLOW', 20)
+
         
         # 큐 및 Exchange 이름 설정
         self._load_queue_config()
@@ -161,7 +166,13 @@ class Config:
     
     def get_mongodb_url(self) -> str:
         """MongoDB 연결 URL 반환"""
-        return self.MONGO_URI
+        if self.MONGO_USER and self.MONGO_PASSWORD:
+            return (
+                f"mongodb://{self.MONGO_USER}:{self.MONGO_PASSWORD}" 
+                f"@{self.MONGO_HOST}:{self.MONGO_PORT}/{self.MONGO_DB_NAME}?authSource={self.MONGO_DB_NAME}"
+            )
+        else:
+            return f"mongodb://{self.MONGO_HOST}:{self.MONGO_PORT}/{self.MONGO_DB_NAME}"
     
     def validate_config(self) -> list:
         """설정 검증 및 문제점 반환"""
@@ -177,12 +188,12 @@ class Config:
         if not self.RABBITMQ_PASSWORD:
             issues.append("RABBITMQ_PASSWORD가 설정되지 않았습니다.")
         
-        if not self.MONGO_URI:
-            issues.append("MONGO_URI가 설정되지 않았습니다.")
+        if not self.MONGO_HOST:
+            issues.append("MONGO_HOST가 설정되지 않았습니다.")
         
         # 포트 범위 검증
-        if not (1 <= self.RABBITMQ_PORT <= 65535):
-            issues.append(f"RABBITMQ_PORT({self.RABBITMQ_PORT})가 유효하지 않습니다.")
+        if not (1 <= self.MONGO_PORT <= 65535):
+            issues.append(f"MONGO_PORT({self.MONGO_PORT})가 유효하지 않습니다.")
         
         # 성능 설정 검증
         if self.MAX_CONCURRENT_GAMES <= 0:
@@ -196,6 +207,12 @@ class Config:
         
         if self.RESPONSE_PREFETCH_COUNT <= 0:
             issues.append("RESPONSE_PREFETCH_COUNT는 0보다 커야 합니다.")
+        
+        if self.MODEL_LOAD_TIMEOUT <= 0:
+            issues.append("MODEL_LOAD_TIMEOUT은 0보다 커야 합니다.")
+        
+        if self.AI_REQUEST_RETRY_DELAY <= 0:
+            issues.append("AI_REQUEST_RETRY_DELAY는 0보다 커야 합니다.")
         
         return issues
     
@@ -216,34 +233,36 @@ class Config:
         print(f"  응답 Prefetch: {self.RESPONSE_PREFETCH_COUNT}")
         print()
         print("MongoDB 설정:")
-        print(f"  URI: {self.MONGO_URI}")
+        print(f"  호스트: {self.MONGO_HOST}:{self.MONGO_PORT}")
         print(f"  데이터베이스: {self.MONGO_DB_NAME}")
+        print()
+        print("MySQL 설정:")
+        print(f"  호스트: {self.MYSQL_HOST}:{self.MYSQL_PORT}")
+        print(f"  데이터베이스: {self.MYSQL_DATABASE}")
         print()
         print("성능 설정:")
         print(f"  최대 동시 게임: {self.MAX_CONCURRENT_GAMES:,}")
         print(f"  AI 요청 타임아웃: {self.AI_REQUEST_TIMEOUT}초")
         print(f"  외부 동기화 배치 크기: {self.EXTERNAL_SYNC_BATCH_SIZE}")
         print()
-        print("게임 세션 설정:")
-        print(f"  게임 세션 타임아웃: {self.GAME_SESSION_TIMEOUT_MINUTES}분")
-        print()
+
         print("큐 설정:")
         print(f"  게임 요청 Exchange: {self.GAME_REQUEST_EXCHANGE}")
         print(f"  AI 추론 Exchange: {self.AI_INFERENCE_EXCHANGE}")
         print(f"  모델 로드 Exchange: {self.MODEL_LOAD_EXCHANGE}")
         print(f"  응답 Exchange: {self.RESPONSE_EXCHANGE}")
         print(f"  게임 진행 Exchange: {self.GAME_PROGRESS_EXCHANGE}")
+        print()
+        print("모델 로드 설정:")
+        print(f"  모델 로드 타임아웃: {self.MODEL_LOAD_TIMEOUT}초")
+        print(f"  AI 요청 재시도 지연: {self.AI_REQUEST_RETRY_DELAY}초")
         print("=" * 50)
     
     def __repr__(self) -> str:
         """설정 객체 문자열 표현"""
         return f"Config(SERVER_ID={self.SERVER_ID}, ENVIRONMENT={self.ENVIRONMENT}, DEBUG={self.DEBUG})"
     
-    # 속성으로 접근할 수 있는 편의 메서드들 추가
-    @property
-    def game_session_timeout_minutes(self) -> int:
-        """게임 세션 타임아웃 (분)"""
-        return self.GAME_SESSION_TIMEOUT_MINUTES
+
 
 
 # 전역 설정 인스턴스 (지연 초기화)

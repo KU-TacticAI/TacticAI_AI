@@ -123,17 +123,30 @@ class AIServer:
         """
         self.logger.info(f"[Inference] request_id={request.request_id} model_id={request.model_id}")
         start_time = time.time()
+        
+        # AI 추론 수행
         response = self.ai_manager.inference(request)
+        
+        # 추론 시간 계산 (밀리초)
+        inference_time_ms = int((time.time() - start_time) * 1000)
+        
+        # 응답에 추론 시간과 AI 서버 ID 추가
+        response.response_time_ms = inference_time_ms
+        response.ai_server_id = self.server_id
+        
+        # 응답 발송
         self.rabbitmq_client.publish_inference_response(response, request.game_server_id)
         self._log_request_metrics(request.request_id, "inference", start_time, response.success)
         
-    def _create_inference_response(self, request: InferenceRequest, probabilities: list, success: bool = True) -> InferenceResponse:
+    def _create_inference_response(self, request: InferenceRequest, probabilities: list, success: bool = True, message: str = "", response_time_ms: int = 0) -> InferenceResponse:
         """
         추론 응답 생성
         Args:
             request: 원본 요청
             probabilities: 확률 배열
             success: 성공 여부
+            message: 응답 메시지
+            response_time_ms: 응답 시간 (밀리초)
         Returns:
             InferenceResponse: 생성된 응답
         """
@@ -142,8 +155,11 @@ class AIServer:
             timestamp=datetime.utcnow().isoformat(),
             game_id=request.game_id,
             model_id=request.model_id,
+            success=success,
             probabilities=probabilities,
-            success=success
+            message=message,
+            ai_server_id="",  # handle_inference_request에서 설정
+            response_time_ms=response_time_ms
         )
         
     def _create_model_load_response(self, request: ModelLoadRequest, success: bool, message: str = None) -> ModelLoadResponse:

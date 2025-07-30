@@ -39,8 +39,11 @@ class InferenceResponse(BaseMessage):
     """AI 추론 응답 메시지"""
     game_id: str
     model_id: str
-    probabilities: List[float] # 각 게임별 확률배열 길이 틱텍토 9 오델로 65 체스 4672
-    success: bool = True
+    success: bool
+    probabilities: List[float] = []  # 각 게임별 확률배열 길이 틱텍토 9 오델로 65 체스 4672
+    message: str = ""
+    ai_server_id: str = ""
+    response_time_ms: int = 0
 
 
 class ModelLoadRequest(BaseMessage):

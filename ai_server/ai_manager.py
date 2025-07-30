@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from pathlib import Path
 import requests
 from urllib.parse import urlparse
+import time
 
 from config import Config
 from message_schemas import (
@@ -249,45 +250,64 @@ class AIManager:
             raise RuntimeError(f"Failed to download model from {model_url}")
         
     def inference(self, request: InferenceRequest) -> InferenceResponse:
+        """AI 추론 수행"""
+        start_time = time.time()
+        
+        try:
+            self.logger.info(f"추론 시작: model_id={request.model_id}, game_type={request.game_type}")
+            self.logger.info(f"보드 상태: {request.board_state}, 길이={len(request.board_state)}")
+            
+            # 모델 존재 확인
+            if request.model_id not in self.models:
+                error_msg = f"모델을 찾을 수 없음: {request.model_id}"
+                self.logger.error(error_msg)
+                response_time_ms = int((time.time() - start_time) * 1000)
+                return self._create_inference_response(request, [], False, error_msg, response_time_ms)
+            
+            ai_model = self.models[request.model_id]  # AIModel 객체
+            self.logger.info(f"모델 발견: {request.model_id}, 타입: {type(ai_model)}")
+            
+            # ✅ AIModel의 predict 메서드 사용 (올바른 방식)
+            result = ai_model.predict(
+                board_state=request.board_state,
+                current_turn=request.current_turn,
+                turn_number=request.turn_number
+            )
+            self.logger.info(f"추론 성공: 결과 길이={len(result)}")
+            
+            response_time_ms = int((time.time() - start_time) * 1000)
+            return self._create_inference_response(request, result, True, "", response_time_ms)
+            
+        except Exception as e:
+            error_msg = f"추론 중 오류 발생: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+            response_time_ms = int((time.time() - start_time) * 1000)
+            return self._create_inference_response(request, [], False, error_msg, response_time_ms)
+        
+    def _create_inference_response(self, request: InferenceRequest, probabilities: List[float], success: bool, message: str = "", response_time_ms: int = 0) -> InferenceResponse:
         """
-        추론 요청 처리
+        추론 응답 생성
         
         Args:
-            request: 추론 요청
+            request: 원본 요청
+            probabilities: 확률 리스트
+            success: 성공 여부
+            message: 메시지 (기본값: "")
+            response_time_ms: 응답 시간 (ms 단위, 기본값: 0)
             
         Returns:
-            InferenceResponse: 추론 응답
+            InferenceResponse: 생성된 응답 객체
         """
-        model = self.get_model(request.model_id)
-        if not model:
-            return InferenceResponse(
-                request_id=request.request_id,
-                timestamp=request.timestamp,
-                game_id=request.game_id,
-                model_id=request.model_id,
-                probabilities=[],
-                success=False
-            )
-        try:
-            probs = model.predict(request.board_state, request.current_turn, request.turn_number)
-            return InferenceResponse(
-                request_id=request.request_id,
-                timestamp=request.timestamp,
-                game_id=request.game_id,
-                model_id=request.model_id,
-                probabilities=probs,
-                success=True
-            )
-        except Exception as e:
-            self.logger.error(f"Inference error for model {request.model_id}: {e}")
-            return InferenceResponse(
-                request_id=request.request_id,
-                timestamp=request.timestamp,
-                game_id=request.game_id,
-                model_id=request.model_id,
-                probabilities=[],
-                success=False
-            )
+        return InferenceResponse(
+            request_id=request.request_id,
+            timestamp=request.timestamp,
+            game_id=request.game_id,
+            model_id=request.model_id,
+            probabilities=probabilities,
+            success=success,
+            message=message,
+            response_time_ms=response_time_ms
+        )
         
     def cleanup_old_models(self):
         """오래된 모델 정리"""
