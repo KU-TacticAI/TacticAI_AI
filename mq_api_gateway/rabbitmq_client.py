@@ -7,7 +7,7 @@ API Gateway와 RabbitMQ 간의 메시지 통신을 담당합니다.
 
 import json
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, List, Dict, Any
 import pika
 from pika import BlockingConnection, ConnectionParameters, BasicProperties
 from pika.exceptions import AMQPConnectionError, AMQPChannelError
@@ -141,7 +141,7 @@ class RabbitMQClient:
     
 
     
-    def create_game_progress_queue(self, game_id: str) -> bool:
+    def create_game_progress_queue(self, game_id: str, player_ids:List[str]) -> bool:
         """특정 게임의 진행상황 큐 생성"""
         try:
             # 연결 상태 확인 및 재연결
@@ -151,33 +151,39 @@ class RabbitMQClient:
                     return False
                 self.setup_topology()
             
-            queue_name = f"{self.config.GAME_PROGRESS_QUEUE_PREFIX}_{game_id}"
             routing_key = f"{self.config.GAME_PROGRESS_QUEUE_PREFIX}.{game_id}"
-            
-            # 큐 생성
-            self.channel.queue_declare(
-                queue=queue_name,
-                durable=True
-            )
-            
-            # Exchange와 바인딩
-            self.channel.queue_bind(
-                exchange=self.config.GAME_PROGRESS_EXCHANGE,
-                queue=queue_name,
-                routing_key=routing_key
-            )
-            
-            logger.info(f"게임 진행상황 큐 생성 완료: {queue_name}")
+
+            for player_id in player_ids:
+                queue_name = f"{self.config.GAME_PROGRESS_QUEUE_PREFIX}_{game_id}_{player_id}"
+                
+                # 큐 생성
+                self.channel.queue_declare(
+                    queue=queue_name,
+                    durable=True
+                )
+                
+                # Exchange와 바인딩
+                self.channel.queue_bind(
+                    exchange=self.config.GAME_PROGRESS_EXCHANGE,
+                    queue=queue_name,
+                    routing_key=routing_key
+                )
+                print(f"게임 진행상황 큐 생성 완료: {queue_name}")
+                logger.info(f"게임 진행상황 큐 생성 완료: {queue_name}")
             return True
             
         except Exception as e:
             logger.error(f"게임 진행상황 큐 생성 실패: {e}")
             return False
     
-    def get_game_progress_messages(self, game_id: str, limit: int = 10) -> list:
+    def get_game_progress_messages(self, game_id: str, player_id: str, limit: int = 10) -> list:
         """특정 게임의 진행상황 메시지 조회"""
         if not game_id:
             logger.error("game_id가 필요합니다.")
+            return []
+        
+        if not player_id:
+            logger.error("player_id가 필요합니다.")
             return []
         
         try:
@@ -188,7 +194,7 @@ class RabbitMQClient:
                     return []
                 self.setup_topology()
             
-            queue_name = f"{self.config.GAME_PROGRESS_QUEUE_PREFIX}_{game_id}"
+            queue_name = f"{self.config.GAME_PROGRESS_QUEUE_PREFIX}_{game_id}_{player_id}"
             
             # 큐가 존재하는지 확인하고 없으면 바로 빈 리스트 반환
             try:
@@ -233,7 +239,7 @@ class RabbitMQClient:
             logger.error(f"게임 진행상황 메시지 조회 실패: {e}")
             return []
     
-    def delete_game_progress_queue(self, game_id: str) -> bool:
+    def delete_game_progress_queue(self, game_id: str, player_id: str) -> bool:
         """특정 게임의 진행상황 큐 삭제"""
         if not game_id:
             logger.error("game_id가 필요합니다.")
@@ -247,7 +253,7 @@ class RabbitMQClient:
                     return False
                 self.setup_topology()
             
-            queue_name = f"{self.config.GAME_PROGRESS_QUEUE_PREFIX}_{game_id}"
+            queue_name = f"{self.config.GAME_PROGRESS_QUEUE_PREFIX}_{game_id}_{player_id}"
             
             # 큐 삭제
             self.channel.queue_delete(queue=queue_name)

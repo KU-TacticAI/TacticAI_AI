@@ -2,6 +2,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict, Deque, List
 from collections import deque
@@ -18,6 +19,15 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="MQ API Gateway", description="게임 서버와 RabbitMQ 간의 API Gateway")
+
+# ✅ CORS 미들웨어 추가
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 프로덕션에서는 구체적인 도메인 지정
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.on_event("startup")
 async def startup_event():
@@ -52,7 +62,7 @@ def create_game_request(request: GameRequestCreate):
         # 연결 상태 확인 및 재연결은 각 메서드 내부에서 처리됨
         
         # 4. 해당 게임의 진행상황 큐 생성
-        if not client.create_game_progress_queue(request.game_id):
+        if not client.create_game_progress_queue(request.game_id,request.player_names):
             logger.warning(f"게임 진행상황 큐 생성 실패: {request.game_id}")
         
         # 5. 메시지 발행
@@ -77,8 +87,8 @@ def create_game_request(request: GameRequestCreate):
         )
 
 
-@app.get("/progress/{game_id}", response_model=List[GameProgressResponse])
-def get_game_progress(game_id: str, n: int = Query(10, gt=0)):
+@app.get("/progress/{game_id}/{player_id}", response_model=List[GameProgressResponse])
+def get_game_progress(game_id: str,player_id:str, n: int = Query(10, gt=0)):
     """게임 진행상황 조회"""
     try:
         client = get_rabbitmq_client()
@@ -87,7 +97,7 @@ def get_game_progress(game_id: str, n: int = Query(10, gt=0)):
         # 연결 상태 확인 및 재연결은 각 메서드 내부에서 처리됨
         
         # 게임 진행상황 메시지 조회
-        messages = client.get_game_progress_messages(game_id, n)
+        messages = client.get_game_progress_messages(game_id,player_id, n)
         
         # GameProgressResponse 형태로 변환
         progress_responses = []
@@ -121,7 +131,7 @@ def get_game_progress(game_id: str, n: int = Query(10, gt=0)):
         # 게임이 종료되었으면 해당 큐 삭제
         if game_finished and progress_responses:
             last_progress = progress_responses[-1]
-            if client.delete_game_progress_queue(last_progress.game_id):
+            if client.delete_game_progress_queue(last_progress.game_id, player_id):
                 logger.info(f"게임 종료로 인한 큐 삭제 완료: {last_progress.game_id}")
             else:
                 logger.warning(f"게임 종료 큐 삭제 실패: {last_progress.game_id}")
