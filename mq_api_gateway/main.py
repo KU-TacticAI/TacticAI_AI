@@ -52,7 +52,7 @@ def create_game_request(request: GameRequestCreate):
             game_type=request.game_type,
             model_ids=request.ai_model_ids,
             model_urls=request.ai_model_urls,
-            players=request.player_names
+            players=request.player_ids
         )
         
         # 2. RabbitMQ 클라이언트 사용
@@ -62,7 +62,7 @@ def create_game_request(request: GameRequestCreate):
         # 연결 상태 확인 및 재연결은 각 메서드 내부에서 처리됨
         
         # 4. 해당 게임의 진행상황 큐 생성
-        if not client.create_game_progress_queue(request.game_id,request.player_names):
+        if not client.create_game_progress_queue(request.game_id,request.player_ids):
             logger.warning(f"게임 진행상황 큐 생성 실패: {request.game_id}")
         
         # 5. 메시지 발행
@@ -112,7 +112,7 @@ def get_game_progress(game_id: str,player_id:str, n: int = Query(10, gt=0)):
                     board_state=data.get('board_state', []),
                     turn_number=data.get('turn_number', 0),
                     current_turn=data.get('current_turn', 0),
-                    player_names=data.get('players', []),
+                    player_ids=data.get('players', []),
                     last_move=data.get('last_move'),
                     is_finished=data.get('is_finished', False),
                     winner=data.get('winner'),
@@ -154,4 +154,4 @@ def get_game_progress(game_id: str,player_id:str, n: int = Query(10, gt=0)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -58,7 +58,7 @@ class GameRequestCreate(BaseModel):
     game_type: GameType = Field(..., description="게임 타입")
     ai_model_ids: List[str] = Field(..., description="AI 모델 ID 목록")
     ai_model_urls: List[str] = Field(..., description="AI 모델 URL 목록")
-    player_names: List[str] = Field(default=[], description="플레이어 이름 목록")
+    player_ids: List[str] = Field(default=[], description="플레이어 이름 목록")
     
     class Config:
         json_schema_extra = {
@@ -67,7 +67,7 @@ class GameRequestCreate(BaseModel):
                 "game_type": "tictactoe",
                 "ai_model_ids": ["model-1", "model-2"],
                 "ai_model_urls": ["http://example.com/model1", "http://example.com/model2"],
-                "player_names": ["Player1", "Player2"]
+                "player_ids": ["Player1", "Player2"]
             }
         }
 
@@ -97,7 +97,7 @@ class GameProgressResponse(BaseModel):
     board_state: List[int] = Field(..., description="게임판 상태")
     turn_number: int = Field(..., description="현재 턴 번호")
     current_turn: int = Field(..., description="현재 플레이어 턴")
-    player_names: List[str] = Field(..., description="플레이어 이름 목록")
+    player_ids: List[str] = Field(..., description="플레이어 이름 목록")
     last_move: Optional[str] = Field(None, description="마지막 수")
     is_finished: bool = Field(False, description="게임 종료 여부")
     winner: Optional[str] = Field(None, description="승자")
@@ -112,7 +112,7 @@ class GameProgressResponse(BaseModel):
                 "board_state": [0, 0, 0, 0, 0, 0, 0, 0, 0],
                 "turn_number": 1,
                 "current_turn": 0,
-                "player_names": ["Player1", "Player2"],
+                "player_ids": ["Player1", "Player2"],
                 "last_move": "A1",
                 "is_finished": False,
                 "winner": None,
