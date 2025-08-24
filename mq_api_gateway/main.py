@@ -106,24 +106,33 @@ def get_game_progress(game_id: str,player_id:str, n: int = Query(10, gt=0)):
         for msg in messages:
             data = msg['data']
             try:
+                player_ids = data.get('players', [])
+                avg_response_times_dict = data.get('avg_response_times')
+                avg_response_times = None
+                if avg_response_times_dict is not None and isinstance(avg_response_times_dict, dict):
+                    # dict -> list (player_ids 순서)
+                    avg_response_times = [avg_response_times_dict.get(pid, 0) for pid in player_ids]
+                elif isinstance(avg_response_times_dict, list):
+                    avg_response_times = avg_response_times_dict
+                else:
+                    avg_response_times = [0 for _ in player_ids]
                 progress_response = GameProgressResponse(
                     game_id=data.get('game_id'),
                     game_type=data.get('game_type'),
                     board_state=data.get('board_state', []),
                     turn_number=data.get('turn_number', 0),
                     current_turn=data.get('current_turn', 0),
-                    player_ids=data.get('players', []),
+                    player_ids=player_ids,
                     last_move=data.get('last_move'),
                     is_finished=data.get('is_finished', False),
                     winner=data.get('winner'),
-                    is_success=data.get('is_success', False)
+                    is_success=data.get('is_success', False),
+                    avg_response_times=avg_response_times
                 )
                 progress_responses.append(progress_response)
-                
                 # 게임이 종료되었는지 확인
                 if progress_response.is_finished:
                     game_finished = True
-                    
             except Exception as e:
                 logger.error(f"게임 진행상황 응답 변환 실패: {e}")
                 continue

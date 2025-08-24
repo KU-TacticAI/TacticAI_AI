@@ -90,3 +90,4 @@ class GameProgress(BaseMessage):
     is_finished: bool = False
     winner: Optional[str] = None
     is_success: bool = False
+    avg_response_times: Optional[List[float]] = None  # 각 AI의 평균 응답시간 (players 순서)

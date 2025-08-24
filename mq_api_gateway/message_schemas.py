@@ -46,6 +46,7 @@ class GameProgress(BaseMessage):
     is_finished: bool = False
     winner: Optional[str] = None
     is_success: bool = False
+    avg_response_times: Optional[List[float]] = None  # 각 AI의 평균 응답시간 (player_ids 순서)
 
 
 # ============================================================================
@@ -102,6 +103,7 @@ class GameProgressResponse(BaseModel):
     is_finished: bool = Field(False, description="게임 종료 여부")
     winner: Optional[str] = Field(None, description="승자")
     is_success: bool = Field(False, description="요청 성공 여부")
+    avg_response_times: Optional[List[float]] = Field(None, description="각 AI의 평균 응답시간 (player_ids 순서)")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="응답 시간")
     
     class Config:

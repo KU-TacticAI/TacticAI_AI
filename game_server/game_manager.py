@@ -73,7 +73,7 @@ class GameManager:
         # AI별 응답 시간 누적 초기화
         ai_response_times = {}
         for model_id in model_ids:
-            ai_response_times[model_id] = []
+            ai_response_times[str(model_id)] = []
 
         self.game_meta[game_id] = {
             "players": players,
@@ -104,8 +104,13 @@ class GameManager:
             return
 
         # AI별 응답 시간 누적
-        if msg.model_id in meta["ai_response_times"]:
-            meta["ai_response_times"][msg.model_id].append(msg.response_time_ms)
+        model_id_key = str(msg.model_id)
+        self.logger.info(f"AI 응답 누적 시도: model_id_key={model_id_key}, ai_response_times.keys()={list(meta['ai_response_times'].keys())}, response_time_ms={msg.response_time_ms}")
+        if model_id_key in meta["ai_response_times"]:
+            meta["ai_response_times"][model_id_key].append(msg.response_time_ms)
+            self.logger.info(f"AI 응답 누적 성공: {model_id_key} → {meta['ai_response_times'][model_id_key]}")
+        else:
+            self.logger.warning(f"AI 응답 누적 실패: {model_id_key}가 ai_response_times에 없음")
 
         # AI_ExecutionLog 기록 (성공/실패 모든 경우)
         if self.db_available:
@@ -261,7 +266,6 @@ class GameManager:
         meta = self.game_meta.get(game_id)
         # 오류 상황: 게임/메타 없음 또는 기타 에러
         if not game or not meta or error:
-            # 오류 상황에도 최소한의 정보로 진행상황 발행
             from message_schemas import GameProgress
             import datetime, uuid
             progress = GameProgress(
@@ -284,6 +288,7 @@ class GameManager:
                 self.logger.error(f"진행상황 발행 실패: 게임이 존재하지 않음: {game_id}")
             await self.rabbitmq_client.publish_game_progress(progress)
             return
+
         # board_state를 1차원 배열로 변환
         board = getattr(game, "board", None)
         if board is None:
@@ -296,10 +301,26 @@ class GameManager:
             board_state = board
         # 마지막 수
         last_move = game.move_history[-1]["move"] if game.move_history else None
+
+        # 평균 응답시간 계산 (게임 종료 시에만)
+        is_finished = game.is_game_over()
+        avg_response_times = None
+        if is_finished:
+            ai_response_times = meta.get("ai_response_times", {})
+            model_ids = meta["model_ids"]
+            avg_response_times = []
+            for mid in model_ids:
+                times = ai_response_times.get(str(mid), [])
+                if times:
+                    avg = sum(times) / len(times)
+                else:
+                    avg = 0
+                avg_response_times.append(avg)
+
         # GameProgress 메시지 생성
         from message_schemas import GameProgress
         import datetime, uuid
-        progress = GameProgress(
+        progress_kwargs = dict(
             request_id=str(uuid.uuid4()),
             timestamp=datetime.datetime.utcnow().isoformat(),
             game_id=game_id,
@@ -309,10 +330,14 @@ class GameManager:
             current_turn=meta["current_turn"],
             players=meta["players"],
             last_move=str(last_move) if last_move is not None else None,
-            is_finished=game.is_game_over(),
-            winner=game.get_winner() if game.is_game_over() else None,
+            is_finished=is_finished,
+            winner=game.get_winner() if is_finished else None,
             is_success=True
         )
+        if is_finished:
+            progress_kwargs["avg_response_times"] = avg_response_times
+
+        progress = GameProgress(**progress_kwargs)
         self.logger.info(f"게임 진행상황 발행: {game_id}, 턴: {meta['turn_number']}, 종료: {progress.is_finished}")
         await self.rabbitmq_client.publish_game_progress(progress)
 

@@ -545,7 +545,7 @@ class Chess(BoardGame):
     def is_game_over(self) -> bool:
         """게임 종료 여부 확인"""
         return (self._is_checkmate() or self._is_stalemate() or 
-                self._is_insufficient_material() or self.halfmove_clock >= 100)
+                self._is_insufficient_material() or self.halfmove_clock >= 50)
     
     def _is_checkmate(self) -> bool:
         """체크메이트 상태인지 확인"""
