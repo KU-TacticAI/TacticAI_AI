@@ -16,6 +16,7 @@ class GameType(str, Enum):
     CHESS = "chess"
     OTHELLO = "othello"
     TICTACTOE = "tictactoe"
+    OMOK = "omok"
 
 
 class BaseMessage(BaseModel):
@@ -40,7 +41,8 @@ class InferenceResponse(BaseMessage):
     game_id: str
     model_id: str
     success: bool
-    probabilities: List[float] = []  # 각 게임별 확률배열 길이 틱텍토 9 오델로 65 체스 4672
+    # 각 게임별 확률배열 길이: 틱택토 9, 오셀로 65, 체스 4672, 오목(15x15) 225 (보드 크기에 따라 달라질 수 있음)
+    probabilities: List[float] = []  
     message: str = ""
     ai_server_id: str = ""
     response_time_ms: int = 0

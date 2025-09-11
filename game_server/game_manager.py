@@ -5,6 +5,7 @@ import logging
 import db
 import datetime
 import time
+import numpy as np
 
 class GameManager:
     def __init__(self, rabbitmq_client):
@@ -46,6 +47,7 @@ class GameManager:
             GameType.CHESS: 'Chess',
             GameType.OTHELLO: 'Othello',
             GameType.TICTACTOE: 'TicTacToe',
+            GameType.OMOK: 'Omok',
         }
         try:
             class_name = game_class_map[game_type]
@@ -101,6 +103,16 @@ class GameManager:
         if not game or not meta:
             self.logger.error(f"AI 응답 처리 실패: 게임이 존재하지 않음: {game_id}")
             await self.broadcast_progress(game_id, error="게임이 존재하지 않음")
+            return
+
+        # Validate pending request id and model to avoid applying stale/out-of-order responses
+        pending_req = meta.get("pending_request_id")
+        pending_model = meta.get("pending_model_id")
+        if pending_req is not None and hasattr(msg, 'request_id') and msg.request_id != pending_req:
+            self.logger.warning(f"수신된 응답이 현재 대기중인 요청과 불일치하여 무시합니다: game_id={game_id}, msg.request_id={getattr(msg, 'request_id', None)}, pending={pending_req}")
+            return
+        if pending_model is not None and str(msg.model_id) != str(pending_model):
+            self.logger.warning(f"수신된 응답의 model_id가 현재 턴 모델과 다릅니다. 무시: game_id={game_id}, msg.model_id={msg.model_id}, expected={pending_model}")
             return
 
         # AI별 응답 시간 누적
@@ -240,6 +252,18 @@ class GameManager:
             else:
                 board_state = board
 
+        # For Omok, many model wrappers expect the first element to indicate current player (1 or -1)
+        if game_type == GameType.OMOK:
+            try:
+                # game.current_player is index (0 or 1) in BoardGame; model expects 1 for player0, -1 for player1
+                current_player_value = 1 if getattr(game, 'current_player', 0) == 0 else -1
+            except Exception:
+                current_player_value = 1
+            board_state = [current_player_value] + board_state
+            self.logger.debug(f"Omok InferenceRequest board_state length (with player): {len(board_state)}")
+        else:
+            self.logger.debug(f"InferenceRequest board_state length: {len(board_state)}")
+
         # 서버 ID는 rabbitmq_client에서 config로 접근
         game_server_id = getattr(self.rabbitmq_client.config, "SERVER_ID", "game_server")
 
@@ -257,7 +281,13 @@ class GameManager:
             game_type=game_type,
             game_server_id=game_server_id
         )
-        self.logger.info(f"AI 추론 요청 발행: {game_id}, 턴: {turn_number}, 모델: {model_id}")
+        # 저장 pending request id for validation when response arrives
+        try:
+            self.game_meta[game_id]["pending_request_id"] = req.request_id
+            self.game_meta[game_id]["pending_model_id"] = model_id
+        except Exception:
+            pass
+        self.logger.info(f"AI 추론 요청 발행: {game_id}, 턴: {turn_number}, 모델: {model_id}, request_id={req.request_id}")
         await self.rabbitmq_client.publish_inference_request(req, model_url=model_url)
 
     async def broadcast_progress(self, game_id: str, error: str = None):
@@ -401,10 +431,10 @@ class GameManager:
             duration = time.time() - start_time
             
             if gameinfo_id:
-                self.logger.info(f"GameInfo 기록 성공: game_id={game_id}, gameinfo_id={gameinfo_id}, player_ids={validated_player_ids}, ai_ids={validated_ai_ids}, 소요시간={duration:.3f}초")
+                self.logger.info(f"GameInfo 기록 성공: game_id={game_id}, gameinfo_id={gameinfo_id}, player_ids={players}, ai_ids={model_ids}, 소요시간={duration:.3f}초")
                 return gameinfo_id
             else:
-                self.logger.error(f"GameInfo 기록 실패: game_id={game_id}, player_ids={validated_player_ids}, ai_ids={validated_ai_ids}, 소요시간={duration:.3f}초")
+                self.logger.error(f"GameInfo 기록 실패: game_id={game_id}, player_ids={players}, ai_ids={model_ids}, 소요시간={duration:.3f}초")
                 return None
                 
         except Exception as e:

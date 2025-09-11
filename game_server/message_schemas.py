@@ -21,6 +21,7 @@ class GameType(str, Enum):
     CHESS = "chess"
     OTHELLO = "othello"
     TICTACTOE = "tictactoe"
+    OMOK = "omok"
 
 
 class BaseMessage(BaseModel):
