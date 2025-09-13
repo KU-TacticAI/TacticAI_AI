@@ -72,18 +72,26 @@ class AIServer:
     def start(self):
         """서버 시작"""
         self.logger.info("Starting AI Server...")
-        if not self.rabbitmq_client.connect():
-            self.logger.error("Failed to connect to RabbitMQ. Exiting.")
-            sys.exit(1)
-        self.rabbitmq_client.setup_exchanges_and_queues()
+        connected = self.rabbitmq_client.connect()
+        if not connected:
+            self.logger.warning("Initial RabbitMQ connect failed - will continue and let reconnect loop handle it")
+            # reconnect 루프 시작
+            self.rabbitmq_client.start_reconnect_loop()
+        else:
+            try:
+                self.rabbitmq_client.setup_exchanges_and_queues()
+            except Exception as e:
+                self.logger.warning(f"Failed to setup exchanges/queues: {e}")
         self.is_running = True
-        self.logger.info("AI Server started and ready to receive messages.")
-        # 모델 로드 요청 소비 등록 (스레드X)
+        self.logger.info("AI Server started (may be waiting for RabbitMQ reconnection).")
+        # 모델 로드 요청 소비 등록 (등록 실패 시 콜백은 client 내부에 저장되어 재연결 후 등록됨)
         self.rabbitmq_client.consume_model_load_requests(self.handle_model_load_request)
-        # 추론 요청 소비 등록 (스레드X)
+        # 추론 요청 소비 등록 (등록 실패 시 내부에 저장됨)
         self.rabbitmq_client.start_inference_consumer(self.handle_inference_request)
         # consuming 스레드는 단 한 번만 실행
         self.rabbitmq_client.start_consuming_thread()
+        # reconnect loop도 항상 시작해 두어 재연결을 시도
+        self.rabbitmq_client.start_reconnect_loop()
         # 모델별 바인딩은 모델 로드 성공 시마다 추가
         
     def stop(self):
