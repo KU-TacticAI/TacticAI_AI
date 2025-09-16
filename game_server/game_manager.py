@@ -16,20 +16,22 @@ class GameManager:
         
         # DB 연결 초기화
         try:
-            db.init_db_connections()
-            self.db_available = True
-            self.logger.info("DB 연결 초기화 성공")
-            
-            # MySQL 연결 상태 확인
-            if hasattr(db, 'mysql_conn') and db.mysql_conn is not None:
-                self.mysql_available = True
-                self.logger.info("MySQL 연결 사용 가능 - AI 통계 업데이트 기능 활성화")
+            mongodb_ok, mysql_ok = db.init_db_connections()
+            # db_available은 두 DB가 모두 연결되어야 True로 설정
+            self.db_available = bool(mongodb_ok and mysql_ok)
+            if self.db_available:
+                self.logger.info("Both MongoDB and MySQL connections initialized - DB available")
             else:
-                self.mysql_available = False
-                self.logger.warning("MySQL 연결 불가 - AI 통계 업데이트 기능 비활성화")
-                
+                self.logger.warning(f"DB partial availability - mongodb_ok={mongodb_ok}, mysql_ok={mysql_ok}")
+
+            # MySQL 연결 상태는 mysql_ok 기준
+            self.mysql_available = bool(mysql_ok)
+            if self.mysql_available:
+                self.logger.info("MySQL connection available - AI statistics enabled")
+            else:
+                self.logger.warning("MySQL connection not available - AI statistics disabled")
         except Exception as e:
-            self.logger.error(f"DB 연결 실패: {e}")
+            self.logger.exception(f"DB init unexpected error: {e}")
             self.db_available = False
             self.mysql_available = False
 
@@ -61,13 +63,13 @@ class GameManager:
         game = game_class(game_id, players)
         game.initialize()
         self.games[game_id] = game
-        
+
         # GameInfo 기록 (players를 player_ids로 활용)
-        gameinfo_id = await self._record_game_info(game_id, model_ids, players)
+        gameinfo_id = await self._record_game_info(game_id, model_ids, players, game_type)
         if gameinfo_id is None:
             self.logger.warning(f"GameInfo 기록 실패했지만 게임 계속 진행: {game_id}")
             gameinfo_id = "fallback_id"  # 기본값 설정
-        
+
         # 초기 보드 상태 기록
         if self.db_available:
             await self._record_initial_board(game_id, gameinfo_id)
@@ -137,13 +139,7 @@ class GameManager:
                     "probabilities": []
                 }
                 
-            await self._record_ai_execution_log(
-                msg.model_id, 
-                meta["gameinfo_id"], 
-                msg.response_time_ms, 
-                msg.success, 
-                log_output
-            )
+            # AI execution log collection removed; information recorded in GameDetailLog instead.
             
         if not msg.success:
             self.logger.error(f"AI 추론 실패: {msg}")
@@ -389,8 +385,12 @@ class GameManager:
                     winner_ai_id = int(meta["model_ids"][player_index])
                     self.logger.info(f"승자 매핑: player={winner} (index={player_index}) → ai_id={winner_ai_id}")
                 
-                # GameResult 기록
-                await self._record_game_result(game_id, meta["gameinfo_id"], winner_ai_id)
+                # GameResult collection removed; store winner in GameInfo.winner_ai_id
+                if meta.get("gameinfo_id"):
+                    try:
+                        db.update_game_info_winner(meta["gameinfo_id"], winner_ai_id)
+                    except Exception as e:
+                        self.logger.error(f"Failed to update GameInfo winner: {e}")
                 
                 # AI 통계 업데이트
                 await self._update_ai_statistics_for_game(game_id, meta, winner_ai_id)
@@ -408,7 +408,7 @@ class GameManager:
     def get_game(self, game_id: str) -> BoardGame:
         return self.games.get(game_id)
 
-    async def _record_game_info(self, game_id: str, model_ids: list, players: list = None) -> str:
+    async def _record_game_info(self, game_id: str, model_ids: list, players: list = None, game_type=None) -> str:
         """GameInfo를 MongoDB에 기록"""
         start_time = time.time()
         
@@ -420,9 +420,14 @@ class GameManager:
             players = [int(player) for player in players] if players else []
             model_ids = [int(model) for model in model_ids]
             # GameInfo 스키마 생성
+            import datetime
+            # GameInfo 스키마 생성
             game_info_data = db.GameInfoSchema(
                 player_ids=players,
-                ai_ids=model_ids
+                ai_ids=model_ids,
+                created_at=datetime.datetime.utcnow().isoformat(),
+                winner_ai_id=None,
+                game_type=str(game_type) if game_type is not None else None
             )
             
             # MongoDB에 삽입
@@ -470,6 +475,9 @@ class GameManager:
                 board_snapshot={"board": board_snapshot},
                 turn_count=0,  # 초기 상태이므로 턴 0
                 move_data=None,  # 초기 상태이므로 None
+                execution_time_ms=0,
+                status='success',
+                log_output={},
                 ai_id=None,  # 초기 상태이므로 None
                 gameinfo_id=gameinfo_id
             )
@@ -514,11 +522,18 @@ class GameManager:
                 board_snapshot = board
                 
             # GameDetailLog 스키마 생성
+            # execution_time_ms로는 msg.response_time_ms를 사용하고,
+            # status/log_output는 msg.success와 msg.probabilities로 설정
+            status = 'success' if getattr(msg, 'success', False) else 'failed'
+            log_output = {"probabilities": msg.probabilities} if getattr(msg, 'success', False) else {"probabilities": []}
             game_detail_data = db.GameDetailLogSchema(
                 response_time_ms=msg.response_time_ms,
                 board_snapshot={"board": board_snapshot},
                 turn_count=turn_info["turn_number"],  # 방금 둔 수의 턴 번호
                 move_data=str(move),
+                execution_time_ms=msg.response_time_ms,
+                status=status,
+                log_output=log_output,
                 ai_id=turn_info["ai_id"],  # 방금 수를 둔 AI ID
                 gameinfo_id=gameinfo_id
             )
@@ -540,75 +555,7 @@ class GameManager:
             self.logger.error(f"GameDetailLog 기록 중 예외 발생: game_id={game_id}, error={e}, 소요시간={duration:.3f}초")
             return False
 
-    async def _record_ai_execution_log(self, model_id: str, gameinfo_id: str, execution_time_ms: int, success: bool, log_output: dict = None) -> bool:
-        """AI_ExecutionLog를 MongoDB에 기록"""
-        start_time = time.time()
-        
-        try:
-            # 상태 결정
-            status = "success" if success else "failed"
-            
-            # log_output가 없으면 기본값 설정
-            if log_output is None:
-                log_output = {}
-            
-            # AI_ExecutionLog 스키마 생성
-            ai_execution_data = db.AIExecutionLogSchema(
-                execution_time_ms=execution_time_ms,
-                status=status,
-                log_output=log_output,
-                ai_id=int(model_id),
-                gameinfo_id=gameinfo_id
-            )
-            
-            # MongoDB에 삽입
-            execution_log_id = db.insert_ai_execution_log(ai_execution_data)
-            
-            duration = time.time() - start_time
-            
-            if execution_log_id:
-                self.logger.info(f"AI_ExecutionLog 기록 성공: model_id={model_id}, gameinfo_id={gameinfo_id}, status={status}, 소요시간={duration:.3f}초")
-                return True
-            else:
-                self.logger.error(f"AI_ExecutionLog 기록 실패: model_id={model_id}, gameinfo_id={gameinfo_id}")
-                return False
-                
-        except Exception as e:
-            duration = time.time() - start_time
-            self.logger.error(f"AI_ExecutionLog 기록 중 예외 발생: model_id={model_id}, gameinfo_id={gameinfo_id}, error={e}, 소요시간={duration:.3f}초")
-            return False
-
-    async def _record_game_result(self, game_id: str, gameinfo_id: str, winner_ai_id: int = None) -> bool:
-        """GameResult를 MongoDB에 기록"""
-        start_time = time.time()
-        
-        try:
-            import datetime
-            
-            # GameResult 스키마 생성
-            game_result_data = db.GameResultSchema(
-                created_at=datetime.datetime.utcnow().isoformat(),
-                winner_ai_id=winner_ai_id,  # None이면 무승부
-                gameinfo_id=gameinfo_id
-            )
-            
-            # MongoDB에 삽입
-            result_id = db.insert_game_result(game_result_data)
-            
-            duration = time.time() - start_time
-            
-            if result_id:
-                winner_info = f"winner_ai_id={winner_ai_id}" if winner_ai_id else "무승부"
-                self.logger.info(f"GameResult 기록 성공: game_id={game_id}, result_id={result_id}, {winner_info}, 소요시간={duration:.3f}초")
-                return True
-            else:
-                self.logger.error(f"GameResult 기록 실패: game_id={game_id}, winner_ai_id={winner_ai_id}")
-                return False
-                
-        except Exception as e:
-            duration = time.time() - start_time
-            self.logger.error(f"GameResult 기록 중 예외 발생: game_id={game_id}, error={e}, 소요시간={duration:.3f}초")
-            return False
+    # AI execution log and GameResult recording functions removed.
 
     async def _update_ai_statistics_for_game(self, game_id: str, meta: dict, winner_ai_id: int = None) -> bool:
         """게임 종료 시 참여한 모든 AI의 통계 업데이트"""
@@ -637,8 +584,8 @@ class GameManager:
                     else:
                         win, draw, loss = 0, 0, 1  # 패배
                     
-                    # 평균 응답 시간 계산
-                    response_times = ai_response_times.get(model_id, [])
+                    # 평균 응답 시간 계산 (ai_response_times의 키는 문자열로 저장되어 있음)
+                    response_times = ai_response_times.get(str(model_id), [])
                     if response_times:
                         avg_response_time = sum(response_times) // len(response_times)
                     else:
