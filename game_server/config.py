@@ -76,6 +76,17 @@ class Config:
         # 모델 로드 설정
         self.MODEL_LOAD_TIMEOUT = self._get_int('MODEL_LOAD_TIMEOUT', 120)
         self.AI_REQUEST_RETRY_DELAY = self._get_int('AI_REQUEST_RETRY_DELAY', 5)
+        # DB 재연결 설정
+        # 최대 재시도 횟수 (0 = 재시도 안함, -1 = 무한 재시도)
+        self.DB_RECONNECT_MAX_ATTEMPTS = self._get_int('DB_RECONNECT_MAX_ATTEMPTS', -1)
+        # 재시도 간격(초)
+        self.DB_RECONNECT_DELAY = self._get_float('DB_RECONNECT_DELAY', 2.0)
+        # 영속적 로컬 큐 설정 (DB가 다운되었을 때 기록을 로컬에 쌓고 복구 시 전송)
+        self.DB_USE_PERSISTENT_QUEUE = self._get_bool('DB_USE_PERSISTENT_QUEUE', True)
+        # 큐 파일 경로 (기본: game_server/persistent_db_queue.jsonl)
+        self.DB_QUEUE_PATH = os.getenv('DB_QUEUE_PATH', os.path.join(os.path.dirname(__file__), 'persistent_db_queue.jsonl'))
+        # 큐 flush 주기(초)
+        self.DB_QUEUE_FLUSH_INTERVAL = self._get_float('DB_QUEUE_FLUSH_INTERVAL', 5.0)
         
         # 디버깅을 위한 로드된 값 확인
         if self.DEBUG:

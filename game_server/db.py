@@ -7,6 +7,11 @@ import mysql.connector
 from config import get_config
 from typing import Any, List, Dict
 from dataclasses import dataclass, asdict
+try:
+    # local persistent queue (optional)
+    from db_queue import enqueue as _enqueue_db
+except Exception:
+    _enqueue_db = None
 
 # MongoDB 컬렉션: GameInfo, GameDetailLog, AI_ExecutionLog, GameResult
 # MySQL 테이블: AI_Statistics
@@ -41,6 +46,80 @@ def init_db_connections():
         logger.exception("Failed to initialize MySQL: %s", e)
 
     return mongodb_ok, mysql_ok
+
+
+def _should_retry(attempt: int, max_attempts: int) -> bool:
+    if max_attempts < 0:
+        return True
+    return attempt < max_attempts
+
+
+def ensure_mongodb_connected() -> bool:
+    """Ensure the global `mongodb_client` is connected. Attempt to reconnect according to config."""
+    global mongodb_client
+    cfg = get_config()
+    attempt = 0
+    delay = cfg.DB_RECONNECT_DELAY
+    max_attempts = cfg.DB_RECONNECT_MAX_ATTEMPTS
+
+    while not mongodb_client:
+        attempt += 1
+        try:
+            logger.info(f"Attempting MongoDB connect (attempt {attempt})")
+            mongodb_client = init_mongodb()
+            logger.info("MongoDB reconnected")
+            return True
+        except Exception as e:
+            mongodb_client = None
+            logger.exception(f"MongoDB reconnect attempt {attempt} failed: {e}")
+            if not _should_retry(attempt, max_attempts):
+                logger.error("MongoDB reconnect max attempts reached, giving up")
+                return False
+            time.sleep(delay)
+    # already connected
+    try:
+        mongodb_client.admin.command('ping')
+        return True
+    except Exception:
+        # try reconnect loop once
+        mongodb_client = None
+        return ensure_mongodb_connected()
+
+
+def ensure_mysql_connected() -> bool:
+    """Ensure the global `mysql_conn` is connected. Attempt to reconnect according to config."""
+    global mysql_conn
+    cfg = get_config()
+    attempt = 0
+    delay = cfg.DB_RECONNECT_DELAY
+    max_attempts = cfg.DB_RECONNECT_MAX_ATTEMPTS
+
+    while True:
+        attempt += 1
+        if mysql_conn:
+            try:
+                mysql_conn.ping(reconnect=True, attempts=1, delay=0)
+                return True
+            except Exception:
+                try:
+                    mysql_conn.close()
+                except Exception:
+                    pass
+                mysql_conn = None
+
+        try:
+            logger.info(f"Attempting MySQL connect (attempt {attempt})")
+            mysql_conn = init_mysql()
+            logger.info("MySQL reconnected")
+            return True
+        except Exception as e:
+            mysql_conn = None
+            logger.exception(f"MySQL reconnect attempt {attempt} failed: {e}")
+            if not _should_retry(attempt, max_attempts):
+                logger.error("MySQL reconnect max attempts reached, giving up")
+                return False
+            time.sleep(delay)
+
 
 # --- 데이터 클래스 정의 ---
 
@@ -94,6 +173,16 @@ def update_game_info_winner(gameinfo_id: str, winner_ai_id: int) -> bool:
     Update the GameInfo document's winner_ai_id field.
     """
     try:
+        if not ensure_mongodb_connected():
+            logger.error("Cannot update GameInfo winner because MongoDB is not connected")
+            # enqueue for later if configured
+            try:
+                cfg = get_config()
+                if cfg.DB_USE_PERSISTENT_QUEUE and _enqueue_db:
+                    _enqueue_db('update_game_info_winner', {'gameinfo_id': gameinfo_id, 'winner_ai_id': winner_ai_id})
+            except Exception:
+                pass
+            return False
         db = mongodb_client[get_config().MONGO_DB_NAME]
         if not ObjectId.is_valid(gameinfo_id):
             logger.error(f"Invalid gameinfo_id for winner update: {gameinfo_id}")
@@ -115,15 +204,41 @@ def update_game_info_winner(gameinfo_id: str, winner_ai_id: int) -> bool:
 
 # --- MongoDB ---
 
-def insert_game_info(data: GameInfoSchema):
+def insert_game_info(data: GameInfoSchema, client_gameinfo_id: str = None):
     """
     GameInfo 컬렉션에 게임 정보 추가
     """
     try:
+        if not ensure_mongodb_connected():
+            logger.error("Cannot insert GameInfo because MongoDB is not connected")
+            try:
+                cfg = get_config()
+                if cfg.DB_USE_PERSISTENT_QUEUE and _enqueue_db:
+                    payload = asdict(data)
+                    if client_gameinfo_id:
+                        payload['client_gameinfo_id'] = client_gameinfo_id
+                    _enqueue_db('insert_game_info', payload)
+            except Exception:
+                pass
+            return None
         db = mongodb_client[get_config().MONGO_DB_NAME]
-        result = db.GameInfo.insert_one(asdict(data))
+        doc = asdict(data)
+        if client_gameinfo_id:
+            # store the client id so queued logs can be resolved later
+            doc['client_gameinfo_id'] = client_gameinfo_id
+        result = db.GameInfo.insert_one(doc)
         return str(result.inserted_id)
     except Exception as e:
+        try:
+            cfg = get_config()
+            if cfg.DB_USE_PERSISTENT_QUEUE and _enqueue_db:
+                payload = asdict(data)
+                if client_gameinfo_id:
+                    payload['client_gameinfo_id'] = client_gameinfo_id
+                _enqueue_db('insert_game_info', payload)
+        except Exception:
+            pass
+        logger.exception(f"Failed to insert GameInfo: {e}")
         return None
 
 def insert_game_detail_log(data: GameDetailLogSchema):
@@ -131,10 +246,26 @@ def insert_game_detail_log(data: GameDetailLogSchema):
     GameDetailLog 컬렉션에 게임 상세 정보 추가
     """
     try:
+        if not ensure_mongodb_connected():
+            logger.error("Cannot insert GameDetailLog because MongoDB is not connected")
+            try:
+                cfg = get_config()
+                if cfg.DB_USE_PERSISTENT_QUEUE and _enqueue_db:
+                    _enqueue_db('insert_game_detail_log', asdict(data))
+            except Exception:
+                pass
+            return None
         db = mongodb_client[get_config().MONGO_DB_NAME]
         result = db.GameDetailLog.insert_one(asdict(data))
         return str(result.inserted_id)
     except Exception as e:
+        try:
+            cfg = get_config()
+            if cfg.DB_USE_PERSISTENT_QUEUE and _enqueue_db:
+                _enqueue_db('insert_game_detail_log', asdict(data))
+        except Exception:
+            pass
+        logger.exception(f"Failed to insert GameDetailLog: {e}")
         return None
 
 # --- MySQL ---
@@ -145,6 +276,15 @@ def insert_ai_statistics(data: AIStatisticsSchema):
     start = time.time()
     cursor = None
     try:
+        if not ensure_mysql_connected():
+            logger.error("Cannot insert AI statistics because MySQL is not connected")
+            try:
+                cfg = get_config()
+                if cfg.DB_USE_PERSISTENT_QUEUE and _enqueue_db:
+                    _enqueue_db('insert_ai_statistics', asdict(data))
+            except Exception:
+                pass
+            return False
         cursor = mysql_conn.cursor()
         query = """
             INSERT INTO AI_Statistics 
@@ -169,6 +309,12 @@ def insert_ai_statistics(data: AIStatisticsSchema):
                 mysql_conn.rollback()
             except Exception:
                 pass
+        try:
+            cfg = get_config()
+            if cfg.DB_USE_PERSISTENT_QUEUE and _enqueue_db:
+                _enqueue_db('insert_ai_statistics', asdict(data))
+        except Exception:
+            pass
         logger.exception("Error inserting AI statistics: ai_id=%s, params=%s, duration=%.3fs", data.ai_id, values if 'values' in locals() else None, duration)
         if cursor:
             try:
@@ -186,6 +332,22 @@ def update_ai_statistics(ai_id: int, win: int, draw: int, loss: int, turns: int,
     start = time.time()
     cursor = None
     try:
+        if not ensure_mysql_connected():
+            logger.error("Cannot update AI statistics because MySQL is not connected")
+            try:
+                cfg = get_config()
+                if cfg.DB_USE_PERSISTENT_QUEUE and _enqueue_db:
+                    _enqueue_db('update_ai_statistics', {
+                        'ai_id': ai_id,
+                        'win': win,
+                        'draw': draw,
+                        'loss': loss,
+                        'turns': turns,
+                        'response_time_ms': response_time_ms
+                    })
+            except Exception:
+                pass
+            return False
         cursor = mysql_conn.cursor()
         
         update_query = """
@@ -234,6 +396,19 @@ def update_ai_statistics(ai_id: int, win: int, draw: int, loss: int, turns: int,
                 mysql_conn.rollback()
             except Exception:
                 pass
+        try:
+            cfg = get_config()
+            if cfg.DB_USE_PERSISTENT_QUEUE and _enqueue_db:
+                _enqueue_db('update_ai_statistics', {
+                    'ai_id': ai_id,
+                    'win': win,
+                    'draw': draw,
+                    'loss': loss,
+                    'turns': turns,
+                    'response_time_ms': response_time_ms
+                })
+        except Exception:
+            pass
         logger.exception("Error updating AI statistics: ai_id=%s, params=%s, duration=%.3fs", ai_id, values if 'values' in locals() else None, duration)
         if cursor:
             try:

@@ -6,6 +6,8 @@ import db
 import datetime
 import time
 import numpy as np
+import asyncio
+import uuid
 
 class GameManager:
     def __init__(self, rabbitmq_client):
@@ -65,14 +67,22 @@ class GameManager:
         self.games[game_id] = game
 
         # GameInfo 기록 (players를 player_ids로 활용)
-        gameinfo_id = await self._record_game_info(game_id, model_ids, players, game_type)
-        if gameinfo_id is None:
-            self.logger.warning(f"GameInfo 기록 실패했지만 게임 계속 진행: {game_id}")
-            gameinfo_id = "fallback_id"  # 기본값 설정
+        # Generate a client-side id so we can reference queued logs before DB assigns ObjectId
+        client_gameinfo_id = str(uuid.uuid4())
+        # fire-and-forget background recording; do not await - let game proceed
+        try:
+            asyncio.create_task(self._record_game_info(game_id, model_ids, players, game_type, client_gameinfo_id))
+        except Exception:
+            # In non-async contexts or if create_task fails, fallback to calling without awaiting
+            self.logger.debug("Failed to create_task for _record_game_info; calling directly in background")
+            asyncio.get_event_loop().create_task(self._record_game_info(game_id, model_ids, players, game_type, client_gameinfo_id))
+        gameinfo_id = client_gameinfo_id
 
-        # 초기 보드 상태 기록
-        if self.db_available:
-            await self._record_initial_board(game_id, gameinfo_id)
+        # 초기 보드 상태 기록 (fire-and-forget)
+        try:
+            asyncio.create_task(self._record_initial_board(game_id, gameinfo_id))
+        except Exception:
+            asyncio.get_event_loop().create_task(self._record_initial_board(game_id, gameinfo_id))
 
         # AI별 응답 시간 누적 초기화
         ai_response_times = {}
@@ -168,9 +178,11 @@ class GameManager:
         
         self.logger.info(f"게임 {game_id} 턴 {meta['turn_number']} 진행: move={move}, result={result}")
         
-        # 4. GameDetailLog 기록 (방금 둔 수 기준)
-        if self.db_available:
-            await self._record_game_detail_log(game_id, msg, move, current_turn_info, meta["gameinfo_id"])
+        # 4. GameDetailLog 기록 (방금 둔 수 기준) - fire-and-forget
+        try:
+            asyncio.create_task(self._record_game_detail_log(game_id, msg, move, current_turn_info, meta["gameinfo_id"]))
+        except Exception:
+            asyncio.get_event_loop().create_task(self._record_game_detail_log(game_id, msg, move, current_turn_info, meta["gameinfo_id"]))
     
         # 5. 진행상황 발행
         await self.broadcast_progress(game_id)
@@ -388,12 +400,19 @@ class GameManager:
                 # GameResult collection removed; store winner in GameInfo.winner_ai_id
                 if meta.get("gameinfo_id"):
                     try:
-                        db.update_game_info_winner(meta["gameinfo_id"], winner_ai_id)
+                        # fire-and-forget: let db layer enqueue if needed
+                        try:
+                            asyncio.create_task(self._async_update_winner(meta["gameinfo_id"], winner_ai_id))
+                        except Exception:
+                            asyncio.get_event_loop().create_task(self._async_update_winner(meta["gameinfo_id"], winner_ai_id))
                     except Exception as e:
-                        self.logger.error(f"Failed to update GameInfo winner: {e}")
+                        self.logger.error(f"Failed to schedule GameInfo winner update: {e}")
                 
-                # AI 통계 업데이트
-                await self._update_ai_statistics_for_game(game_id, meta, winner_ai_id)
+                # AI 통계 업데이트 (백그라운드)
+                try:
+                    asyncio.create_task(self._update_ai_statistics_for_game(game_id, meta, winner_ai_id))
+                except Exception:
+                    asyncio.get_event_loop().create_task(self._update_ai_statistics_for_game(game_id, meta, winner_ai_id))
                 
             except Exception as e:
                 self.logger.error(f"GameResult 기록 또는 AI 통계 업데이트 중 오류 발생: {game_id}, error={e}")
@@ -408,7 +427,15 @@ class GameManager:
     def get_game(self, game_id: str) -> BoardGame:
         return self.games.get(game_id)
 
-    async def _record_game_info(self, game_id: str, model_ids: list, players: list = None, game_type=None) -> str:
+    async def _async_update_winner(self, gameinfo_id: str, winner_ai_id: int):
+        """Helper to call synchronous db.update_game_info_winner without blocking the event loop."""
+        loop = asyncio.get_event_loop()
+        try:
+            await loop.run_in_executor(None, db.update_game_info_winner, gameinfo_id, winner_ai_id)
+        except Exception as e:
+            self.logger.error(f"_async_update_winner failed: {e}")
+
+    async def _record_game_info(self, game_id: str, model_ids: list, players: list = None, game_type=None, client_gameinfo_id: str = None) -> str:
         """GameInfo를 MongoDB에 기록"""
         start_time = time.time()
         
@@ -430,17 +457,16 @@ class GameManager:
                 game_type=str(game_type) if game_type is not None else None
             )
             
-            # MongoDB에 삽입
-            gameinfo_id = db.insert_game_info(game_info_data)
-            
+            # MongoDB에 삽입 (요청을 보내고 즉시 반환)
+            try:
+                loop = asyncio.get_event_loop()
+                # call blocking DB insert in threadpool to avoid blocking event loop
+                await loop.run_in_executor(None, db.insert_game_info, game_info_data, client_gameinfo_id)
+            except Exception as e:
+                self.logger.debug(f"GameInfo insert request enqueued/failed locally: {e}")
             duration = time.time() - start_time
-            
-            if gameinfo_id:
-                self.logger.info(f"GameInfo 기록 성공: game_id={game_id}, gameinfo_id={gameinfo_id}, player_ids={players}, ai_ids={model_ids}, 소요시간={duration:.3f}초")
-                return gameinfo_id
-            else:
-                self.logger.error(f"GameInfo 기록 실패: game_id={game_id}, player_ids={players}, ai_ids={model_ids}, 소요시간={duration:.3f}초")
-                return None
+            self.logger.info(f"GameInfo 기록 요청 보냄: game_id={game_id}, client_gameinfo_id={client_gameinfo_id}, player_ids={players}, ai_ids={model_ids}, 소요시간={duration:.3f}초")
+            return client_gameinfo_id
                 
         except Exception as e:
             duration = time.time() - start_time
@@ -482,17 +508,15 @@ class GameManager:
                 gameinfo_id=gameinfo_id
             )
             
-            # MongoDB에 삽입
-            detail_log_id = db.insert_game_detail_log(game_detail_data)
-            
+            # MongoDB에 삽입 요청 전송 (비동기 처리 대상)
+            try:
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, db.insert_game_detail_log, game_detail_data)
+            except Exception as e:
+                self.logger.debug(f"Initial board insert enqueued/failed locally: {e}")
             duration = time.time() - start_time
-            
-            if detail_log_id:
-                self.logger.info(f"초기 보드 기록 성공: game_id={game_id}, detail_log_id={detail_log_id}, 소요시간={duration:.3f}초")
-                return True
-            else:
-                self.logger.error(f"초기 보드 기록 실패: game_id={game_id}, 소요시간={duration:.3f}초")
-                return False
+            self.logger.info(f"초기 보드 기록 요청 보냄: game_id={game_id}, client_gameinfo_id={gameinfo_id}, 소요시간={duration:.3f}초")
+            return True
                 
         except Exception as e:
             duration = time.time() - start_time
@@ -538,17 +562,15 @@ class GameManager:
                 gameinfo_id=gameinfo_id
             )
             
-            # MongoDB에 삽입
-            detail_log_id = db.insert_game_detail_log(game_detail_data)
-            
+            # MongoDB에 삽입 요청 전송 (비동기 처리 대상)
+            try:
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(None, db.insert_game_detail_log, game_detail_data)
+            except Exception as e:
+                self.logger.debug(f"GameDetailLog insert enqueued/failed locally: {e}")
             duration = time.time() - start_time
-            
-            if detail_log_id:
-                self.logger.info(f"GameDetailLog 기록 성공: game_id={game_id}, detail_log_id={detail_log_id}, turn={turn_info['turn_number']}, ai_id={turn_info['ai_id']}, 소요시간={duration:.3f}초")
-                return True
-            else:
-                self.logger.error(f"GameDetailLog 기록 실패: game_id={game_id}, turn={turn_info['turn_number']}, 소요시간={duration:.3f}초")
-                return False
+            self.logger.info(f"GameDetailLog 기록 요청 보냄: game_id={game_id}, client_gameinfo_id={gameinfo_id}, turn={turn_info['turn_number']}, ai_id={turn_info['ai_id']}, 소요시간={duration:.3f}초")
+            return True
                 
         except Exception as e:
             duration = time.time() - start_time
@@ -592,14 +614,13 @@ class GameManager:
                         avg_response_time = 0
                     
                     # AI_Statistics 업데이트
-                    success = db.update_ai_statistics(
-                        ai_id=ai_id,
-                        win=win,
-                        draw=draw,
-                        loss=loss,
-                        turns=total_turns,
-                        response_time_ms=avg_response_time
-                    )
+                    try:
+                        loop = asyncio.get_event_loop()
+                        success = await loop.run_in_executor(None, db.update_ai_statistics,
+                            ai_id, win, draw, loss, total_turns, avg_response_time)
+                    except Exception as e:
+                        self.logger.error(f"Exception while updating AI statistics in executor: {e}")
+                        success = False
                     
                     if success:
                         result_info = "승리" if win else ("무승부" if draw else "패배")
