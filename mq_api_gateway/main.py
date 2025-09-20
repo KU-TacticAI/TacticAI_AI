@@ -137,13 +137,9 @@ def get_game_progress(game_id: str,player_id:str, n: int = Query(10, gt=0)):
                 logger.error(f"게임 진행상황 응답 변환 실패: {e}")
                 continue
         
-        # 게임이 종료되었으면 해당 큐 삭제
-        if game_finished and progress_responses:
-            last_progress = progress_responses[-1]
-            if client.delete_game_progress_queue(last_progress.game_id, player_id):
-                logger.info(f"게임 종료로 인한 큐 삭제 완료: {last_progress.game_id}")
-            else:
-                logger.warning(f"게임 종료 큐 삭제 실패: {last_progress.game_id}")
+        # 게임이 종료되었어도 큐 삭제는 하지 않음 (게이트웨이에서 관리하지 않음)
+        if game_finished:
+            logger.info(f"게임 종료 확인됨 (큐 삭제는 수행하지 않음): {game_id}")
         
         return progress_responses
         

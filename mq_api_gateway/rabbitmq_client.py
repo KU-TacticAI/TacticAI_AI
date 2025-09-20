@@ -1,324 +1,359 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MQ API Gateway용 RabbitMQ 클라이언트
-API Gateway와 RabbitMQ 간의 메시지 통신을 담당합니다.
+Sync-compatible RabbitMQ client for MQ API Gateway.
+
+This file exposes the same synchronous function names and return types as
+the original `pika`-based implementation, but internally uses `aio-pika`.
+It runs an asyncio event loop in a background thread and dispatches
+coroutines with `asyncio.run_coroutine_threadsafe`, so callers don't need
+to be changed immediately.
 """
 
+import asyncio
+import threading
 import json
 import logging
-from typing import Optional, List, Dict, Any
-import pika
-from pika import BlockingConnection, ConnectionParameters, BasicProperties
-from pika.exceptions import AMQPConnectionError, AMQPChannelError
+from typing import Optional, List
+
+from aio_pika import connect_robust, Message, DeliveryMode, ExchangeType
+from aio_pika.abc import AbstractRobustConnection, AbstractRobustChannel
 
 from config import Config
-from message_schemas import GameRequest, GameProgress
+from message_schemas import GameRequest
 
 logger = logging.getLogger(__name__)
 
 
-class RabbitMQClient:
-    """API Gateway용 RabbitMQ 클라이언트"""
-    
+class _AsyncRabbit:
+    """Internal aio-pika async client."""
+
     def __init__(self, config: Config):
-        """RabbitMQ 클라이언트 초기화"""
         self.config = config
-        self.connection: Optional[BlockingConnection] = None
-        self.channel: Optional[pika.channel.Channel] = None
-        
-        logger.info("RabbitMQ 클라이언트 초기화 완료")
-    
-    def connect(self) -> bool:
-        """RabbitMQ 서버에 연결"""
-        try:
-            # 연결 파라미터 설정
-            if self.config.RABBITMQ_USER and self.config.RABBITMQ_PASSWORD:
-                credentials = pika.PlainCredentials(
-                    self.config.RABBITMQ_USER, 
-                    self.config.RABBITMQ_PASSWORD
-                )
-                parameters = ConnectionParameters(
-                    host=self.config.RABBITMQ_HOST,
-                    port=self.config.RABBITMQ_PORT,
-                    credentials=credentials
-                )
-            else:
-                parameters = ConnectionParameters(
-                    host=self.config.RABBITMQ_HOST,
-                    port=self.config.RABBITMQ_PORT
-                )
-            
-            # 연결 생성
-            self.connection = BlockingConnection(parameters)
-            self.channel = self.connection.channel()
-            
-            # QoS 설정
-            self.channel.basic_qos(prefetch_count=1)
-            
-            logger.info(f"RabbitMQ 연결 성공: {self.config.RABBITMQ_HOST}:{self.config.RABBITMQ_PORT}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"RabbitMQ 연결 실패: {e}")
-            return False
-    
-    def setup_topology(self):
-        """RabbitMQ 토폴로지 설정 (Exchange 및 Queue 생성)"""
-        if not self.channel:
-            raise RuntimeError("RabbitMQ 채널이 연결되지 않았습니다.")
-        
-        try:
-            # 게임 요청 Exchange 및 Queue 설정
-            self.channel.exchange_declare(
-                exchange=self.config.GAME_REQUEST_EXCHANGE,
-                exchange_type='direct',
-                durable=True
-            )
-            
-            self.channel.queue_declare(
-                queue=self.config.GAME_REQUEST_QUEUE,
-                durable=True
-            )
-            
-            self.channel.queue_bind(
-                exchange=self.config.GAME_REQUEST_EXCHANGE,
-                queue=self.config.GAME_REQUEST_QUEUE,
-                routing_key=self.config.GAME_REQUEST_QUEUE
-            )
-            
-            # 게임 진행상황 Exchange 설정
-            self.channel.exchange_declare(
-                exchange=self.config.GAME_PROGRESS_EXCHANGE,
-                exchange_type='topic',
-                durable=True
-            )
-            
-            # 게임별 진행상황 큐는 동적으로 생성되므로 여기서는 Exchange만 설정
-            # 실제 큐는 게임 요청 시 game_id별로 생성됨
-            
-            # 응답 Exchange는 game_server에서 사용하므로 여기서는 생성하지 않음
-            # mq_api_gateway는 주로 게임 요청 발행과 진행상황 조회만 담당
-            
-            logger.info("RabbitMQ 토폴로지 설정 완료")
-            
-        except Exception as e:
-            logger.error(f"RabbitMQ 토폴로지 설정 실패: {e}")
-            raise
-    
-    def publish_game_request(self, request: GameRequest) -> bool:
-        """게임 요청 메시지 발행"""
-        try:
-            # 연결 상태 확인 및 재연결
-            if not self.is_connected():
-                if not self.connect():
-                    logger.error("RabbitMQ 재연결 실패")
-                    return False
-                self.setup_topology()
-            
-            message_body = request.model_dump_json()
-            
-            properties = BasicProperties(
-                delivery_mode=2,  # persistent message
-                content_type='application/json'
-            )
-            
-            self.channel.basic_publish(
-                exchange=self.config.GAME_REQUEST_EXCHANGE,
-                routing_key=self.config.GAME_REQUEST_QUEUE,
-                body=message_body,
-                properties=properties
-            )
-            
-            logger.info(f"게임 요청 발행 성공: {request.game_id}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"게임 요청 발행 실패: {e}")
-            return False
-    
+        self.connection: Optional[AbstractRobustConnection] = None
+        self.channel: Optional[AbstractRobustChannel] = None
+        # consumers: queue_name -> consumer_tag
+        self._consumers = {}
+        # in-memory message buffers: queue_name -> list of messages
+        self._buffers = {}
+        # lock for buffer access
+        self._buffer_locks = {}
+        # last used timestamp for consumer idle management
+        self._last_used = {}
+        # background task to stop idle consumers
+        self._idle_task = None
+        # idle timeout in seconds (configurable via Config, fallback to 30s)
+        self._idle_timeout = getattr(self.config, 'GAME_PROGRESS_CONSUMER_IDLE_TIMEOUT', 30)
 
-    
-
-    
-    def create_game_progress_queue(self, game_id: str, player_ids:List[str]) -> bool:
-        """특정 게임의 진행상황 큐 생성"""
-        try:
-            # 연결 상태 확인 및 재연결
-            if not self.is_connected():
-                if not self.connect():
-                    logger.error("RabbitMQ 재연결 실패")
-                    return False
-                self.setup_topology()
-            
-            routing_key = f"{self.config.GAME_PROGRESS_QUEUE_PREFIX}.{game_id}"
-
-            for player_id in player_ids:
-                queue_name = f"{self.config.GAME_PROGRESS_QUEUE_PREFIX}_{game_id}_{player_id}"
-                
-                # 큐 생성
-                self.channel.queue_declare(
-                    queue=queue_name,
-                    durable=True
-                )
-                
-                # Exchange와 바인딩
-                self.channel.queue_bind(
-                    exchange=self.config.GAME_PROGRESS_EXCHANGE,
-                    queue=queue_name,
-                    routing_key=routing_key
-                )
-                print(f"게임 진행상황 큐 생성 완료: {queue_name}")
-                logger.info(f"게임 진행상황 큐 생성 완료: {queue_name}")
+    async def connect(self):
+        if self.connection and not self.connection.is_closed:
             return True
-            
-        except Exception as e:
-            logger.error(f"게임 진행상황 큐 생성 실패: {e}")
-            return False
-    
-    def get_game_progress_messages(self, game_id: str, player_id: str, limit: int = 10) -> list:
-        """특정 게임의 진행상황 메시지 조회"""
-        if not game_id:
-            logger.error("game_id가 필요합니다.")
-            return []
-        
-        if not player_id:
-            logger.error("player_id가 필요합니다.")
-            return []
-        
-        try:
-            # 연결 상태 확인 및 재연결
-            if not self.is_connected():
-                if not self.connect():
-                    logger.error("RabbitMQ 재연결 실패")
-                    return []
-                self.setup_topology()
-            
-            queue_name = f"{self.config.GAME_PROGRESS_QUEUE_PREFIX}_{game_id}_{player_id}"
-            
-            # 큐가 존재하는지 확인하고 없으면 바로 빈 리스트 반환
+
+        params = {}
+        if getattr(self.config, 'RABBITMQ_HOST', None):
+            params['host'] = self.config.RABBITMQ_HOST
+        if getattr(self.config, 'RABBITMQ_PORT', None):
             try:
-                self.channel.queue_declare(queue=queue_name, passive=True)
-            except:
-                # 큐가 없으면 바로 빈 리스트 반환
-                logger.info(f"게임 진행상황 큐가 존재하지 않음: {queue_name}")
-                return []
-            
-            messages = []
-            
-            # 게임 진행상황 큐에서 메시지 가져오기
-            for i in range(limit):
-                method_frame, header_frame, body = self.channel.basic_get(
-                    queue_name, 
-                    auto_ack=False
-                )
-                
-                if method_frame:
-                    try:
-                        message_data = json.loads(body.decode())
-                        messages.append({
-                            'index': len(messages) + 1,
-                            'queue': queue_name,
-                            'data': message_data,
-                            'delivery_tag': method_frame.delivery_tag
-                        })
-                        
-                        # 메시지 처리 완료 시 ACK
-                        self.channel.basic_ack(method_frame.delivery_tag)
-                        
-                    except json.JSONDecodeError as e:
-                        logger.error(f"게임 진행상황 메시지 JSON 파싱 실패: {e}")
-                        self.channel.basic_nack(method_frame.delivery_tag, requeue=False)
-                        
-                else:
-                    break
-                    
-            return messages
-                    
-        except Exception as e:
-            logger.error(f"게임 진행상황 메시지 조회 실패: {e}")
-            return []
-    
-    def delete_game_progress_queue(self, game_id: str, player_id: str) -> bool:
-        """특정 게임의 진행상황 큐 삭제"""
-        if not game_id:
-            logger.error("game_id가 필요합니다.")
-            return False
-        
-        try:
-            # 연결 상태 확인 및 재연결
-            if not self.is_connected():
-                if not self.connect():
-                    logger.error("RabbitMQ 재연결 실패")
-                    return False
-                self.setup_topology()
-            
-            queue_name = f"{self.config.GAME_PROGRESS_QUEUE_PREFIX}_{game_id}_{player_id}"
-            
-            # 큐 삭제
-            self.channel.queue_delete(queue=queue_name)
-            
-            logger.info(f"게임 진행상황 큐 삭제 완료: {queue_name}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"게임 진행상황 큐 삭제 실패: {e}")
-            return False
-    
-    def is_connected(self) -> bool:
-        """연결 상태 확인"""
-        return (
-            self.connection is not None and 
-            not self.connection.is_closed and
-            self.channel is not None and 
-            not self.channel.is_closed
-        )
-    
-    def disconnect(self):
-        """연결 종료"""
+                params['port'] = int(self.config.RABBITMQ_PORT)
+            except Exception:
+                params['port'] = self.config.RABBITMQ_PORT
+        if getattr(self.config, 'RABBITMQ_USER', None):
+            params['login'] = self.config.RABBITMQ_USER
+        if getattr(self.config, 'RABBITMQ_PASSWORD', None):
+            params['password'] = self.config.RABBITMQ_PASSWORD
+
+        self.connection = await connect_robust(**params)
+        self.channel = await self.connection.channel()
+        await self.channel.set_qos(prefetch_count=1)
+
+        # ensure exchanges exist
+        await self.channel.declare_exchange(self.config.GAME_REQUEST_EXCHANGE, ExchangeType.DIRECT, durable=True)
+        await self.channel.declare_exchange(self.config.GAME_PROGRESS_EXCHANGE, ExchangeType.TOPIC, durable=True)
+        return True
+
+    async def close(self):
         try:
             if self.channel and not self.channel.is_closed:
-                self.channel.close()
-            
+                await self.channel.close()
+        except Exception:
+            pass
+        try:
             if self.connection and not self.connection.is_closed:
-                self.connection.close()
-                
-            logger.info("RabbitMQ 연결 종료")
-            
-        except Exception as e:
-            logger.error(f"RabbitMQ 연결 종료 실패: {e}")
-    
+                await self.connection.close()
+        except Exception:
+            pass
+
+    async def publish_game_request(self, request: GameRequest) -> bool:
+        try:
+            await self.connect()
+            exchange = await self.channel.declare_exchange(self.config.GAME_REQUEST_EXCHANGE, ExchangeType.DIRECT, durable=True)
+            body = request.model_dump_json().encode()
+            message = Message(body, delivery_mode=DeliveryMode.PERSISTENT, content_type='application/json')
+            await exchange.publish(message, routing_key=self.config.GAME_REQUEST_QUEUE)
+            logger.info(f"게임 요청 발행 성공: {request.game_id}")
+            return True
+        except Exception:
+            logger.exception("Async publish_game_request failed")
+            return False
+
+    async def create_game_progress_queue(self, game_id: str, player_ids: List[str]) -> bool:
+        try:
+            await self.connect()
+            routing_key = f"{self.config.GAME_PROGRESS_QUEUE_PREFIX}.{game_id}"
+            exchange = await self.channel.declare_exchange(self.config.GAME_PROGRESS_EXCHANGE, ExchangeType.TOPIC, durable=True)
+            for player_id in player_ids:
+                queue_name = f"{self.config.GAME_PROGRESS_QUEUE_PREFIX}_{game_id}_{player_id}"
+                queue = await self.channel.declare_queue(queue_name, durable=True)
+                await queue.bind(exchange, routing_key=routing_key)
+                logger.info(f"게임 진행상황 큐 생성 완료: {queue_name}")
+            return True
+        except Exception:
+            logger.exception("Async create_game_progress_queue failed")
+            return False
+
+    async def get_game_progress_messages(self, game_id: str, player_id: str, limit: int = 10) -> list:
+        if not game_id or not player_id:
+            return []
+        try:
+            # Consumer-based reading handled by background consumers; sync shim will read from buffers.
+            # This async path is not used in the shim. Return empty list if called directly.
+            return []
+        except Exception:
+            logger.exception("Async get_game_progress_messages failed")
+            return []
+
+    async def delete_game_progress_queue(self, game_id: str, player_id: str) -> bool:
+        try:
+            await self.connect()
+            queue_name = f"{self.config.GAME_PROGRESS_QUEUE_PREFIX}_{game_id}_{player_id}"
+            try:
+                queue = await self.channel.declare_queue(queue_name, passive=True)
+            except Exception:
+                logger.info(f"큐가 존재하지 않아 삭제할 필요 없음: {queue_name}")
+                return True
+            await queue.delete()
+            logger.info(f"게임 진행상황 큐 삭제 완료: {queue_name}")
+            return True
+        except Exception:
+            logger.exception("Async delete_game_progress_queue failed")
+            return False
+
+    async def _consumer_callback(self, queue_name: str, incoming):
+        try:
+            data = json.loads(incoming.body.decode())
+        except Exception:
+            logger.exception("consumer: JSON parse failed")
+            try:
+                await incoming.nack(requeue=False)
+            except Exception:
+                pass
+            return
+
+        # append to buffer
+        buf = self._buffers.setdefault(queue_name, [])
+        lock = self._buffer_locks.setdefault(queue_name, asyncio.Lock())
+        async with lock:
+            buf.append({
+                'index': len(buf) + 1,
+                'queue': queue_name,
+                'data': data,
+                'delivery_tag': None,
+            })
+        try:
+            await incoming.ack()
+        except Exception:
+            pass
+
+    async def start_consumer_for_queue(self, queue_name: str):
+        await self.connect()
+        if queue_name in self._consumers:
+            return True
+        try:
+            queue = await self.channel.declare_queue(queue_name, durable=True)
+            # create callback wrapper
+            async def _cb(incoming):
+                await self._consumer_callback(queue_name, incoming)
+
+            consumer_tag = await queue.consume(_cb)
+            self._consumers[queue_name] = consumer_tag
+            # mark last used
+            self._last_used[queue_name] = asyncio.get_event_loop().time()
+            # ensure idle stopper running
+            if self._idle_task is None or self._idle_task.done():
+                self._idle_task = asyncio.create_task(self._idle_consumer_worker())
+            # initialize buffer/lock
+            self._buffers.setdefault(queue_name, [])
+            self._buffer_locks.setdefault(queue_name, asyncio.Lock())
+            return True
+        except Exception:
+            logger.exception(f"start_consumer_for_queue failed: {queue_name}")
+            return False
+
+    async def stop_consumer_for_queue(self, queue_name: str):
+        try:
+            if queue_name not in self._consumers:
+                return True
+            consumer_tag = self._consumers.pop(queue_name)
+            queue = await self.channel.declare_queue(queue_name, passive=True)
+            await queue.cancel(consumer_tag)
+            # clear buffer
+            self._buffers.pop(queue_name, None)
+            self._buffer_locks.pop(queue_name, None)
+            self._last_used.pop(queue_name, None)
+            return True
+        except Exception:
+            logger.exception(f"stop_consumer_for_queue failed: {queue_name}")
+            return False
+
+    async def _idle_consumer_worker(self):
+        """Background task that stops consumers which have been idle for > idle_timeout."""
+        try:
+            while True:
+                now = asyncio.get_event_loop().time()
+                to_stop = []
+                for q, last in list(self._last_used.items()):
+                    # if buffer empty and idle time exceeded -> stop
+                    buf = self._buffers.get(q, [])
+                    if (now - last) > self._idle_timeout and len(buf) == 0:
+                        to_stop.append(q)
+
+                for q in to_stop:
+                    try:
+                        await self.stop_consumer_for_queue(q)
+                        logger.info(f"idle consumer stopped: {q}")
+                    except Exception:
+                        logger.exception(f"failed stopping idle consumer: {q}")
+
+                # sleep a short while
+                await asyncio.sleep(min(5, max(1, int(self._idle_timeout / 4))))
+                # exit early if no consumers remain
+                if not self._consumers:
+                    break
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.exception("idle_consumer_worker crashed")
+
+
+class RabbitMQClient:
+    """Sync-compatible interface backed by aio-pika running in background loop."""
+
+    def __init__(self, config: Config):
+        self.config = config
+        self._async_client = _AsyncRabbit(config)
+
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(target=self._run_loop, daemon=True)
+        self._thread.start()
+
+    def _run_loop(self):
+        asyncio.set_event_loop(self._loop)
+        self._loop.run_forever()
+
+    def _run_coro(self, coro, timeout: float = None):
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        try:
+            return future.result(timeout)
+        except Exception:
+            logger.exception("_run_coro exception")
+            return None
+
+    def connect(self) -> bool:
+        res = self._run_coro(self._async_client.connect())
+        return bool(res)
+
+    def setup_topology(self):
+        # topology is prepared by async connect
+        return
+
+    def publish_game_request(self, request: GameRequest) -> bool:
+        res = self._run_coro(self._async_client.publish_game_request(request))
+        return bool(res)
+
+    def create_game_progress_queue(self, game_id: str, player_ids: List[str]) -> bool:
+        res = self._run_coro(self._async_client.create_game_progress_queue(game_id, player_ids))
+        if not res:
+            return False
+        return True
+
+    def get_game_progress_messages(self, game_id: str, player_id: str, limit: int = 10) -> list:
+        queue_name = f"{self.config.GAME_PROGRESS_QUEUE_PREFIX}_{game_id}_{player_id}"
+        # fetch from in-memory buffer
+        # use asyncio.run_coroutine_threadsafe to acquire buffer lock safely
+        try:
+            async def _ensure_consumer_and_drain():
+                # start consumer lazily if not already
+                if queue_name not in self._async_client._consumers:
+                    await self._async_client.start_consumer_for_queue(queue_name)
+
+                # update last-used to keep consumer alive
+                self._async_client._last_used[queue_name] = asyncio.get_event_loop().time()
+
+                lock = self._async_client._buffer_locks.setdefault(queue_name, asyncio.Lock())
+                async with lock:
+                    buf = self._async_client._buffers.setdefault(queue_name, [])
+                    out = buf[:limit]
+                    # remove drained
+                    del buf[:len(out)]
+                    return out
+
+            future = asyncio.run_coroutine_threadsafe(_ensure_consumer_and_drain(), self._loop)
+            result = future.result(timeout=2)
+            return result if isinstance(result, list) else []
+        except Exception:
+            logger.exception("get_game_progress_messages buffer drain failed")
+            return []
+
+    def delete_game_progress_queue(self, game_id: str, player_id: str) -> bool:
+        res = self._run_coro(self._async_client.delete_game_progress_queue(game_id, player_id))
+        # stop consumer as well
+        queue_name = f"{self.config.GAME_PROGRESS_QUEUE_PREFIX}_{game_id}_{player_id}"
+        try:
+            self._run_coro(self._async_client.stop_consumer_for_queue(queue_name))
+        except Exception:
+            pass
+        return bool(res)
+
+    def is_connected(self) -> bool:
+        conn = getattr(self._async_client, 'connection', None)
+        return conn is not None and not getattr(conn, 'is_closed', False)
+
+    def disconnect(self):
+        try:
+            self._run_coro(self._async_client.close(), timeout=5)
+        except Exception:
+            pass
+        try:
+            self._loop.call_soon_threadsafe(self._loop.stop)
+        except Exception:
+            pass
+
     def __enter__(self):
-        """Context manager 진입"""
         if not self.connect():
             raise RuntimeError("RabbitMQ 연결 실패")
-        self.setup_topology()
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager 종료"""
         self.disconnect()
 
 
-# 싱글톤 인스턴스
+# Singleton instance
 _rabbitmq_client: Optional[RabbitMQClient] = None
 
 
 def get_rabbitmq_client() -> RabbitMQClient:
-    """RabbitMQ 클라이언트 싱글톤 인스턴스 반환"""
     global _rabbitmq_client
-    
+
     if _rabbitmq_client is None:
         config = Config()
         _rabbitmq_client = RabbitMQClient(config)
-    
+
     return _rabbitmq_client
 
 
 def close_rabbitmq_client():
-    """RabbitMQ 클라이언트 연결 종료"""
     global _rabbitmq_client
-    
+
     if _rabbitmq_client:
         _rabbitmq_client.disconnect()
-        _rabbitmq_client = None 
+        _rabbitmq_client = None
