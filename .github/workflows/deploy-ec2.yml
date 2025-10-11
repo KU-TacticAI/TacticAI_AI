@@ -1,0 +1,81 @@
+name: CI & Deploy - build, smoke, deploy to EC2
+
+on:
+  push:
+    branches: [ test ]
+  workflow_dispatch: {}
+
+jobs:
+  build-and-smoke:
+    name: Build images and run smoke
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [mq_api_gateway, game_server, ai_server]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU (for cross-platform builds)
+        uses: docker/setup-qemu-action@v2
+
+      - name: Build image (CI only)
+        uses: docker/build-push-action@v4
+        with:
+          context: ./${{ matrix.service }}
+          file: ./${{ matrix.service }}/Dockerfile
+          push: false
+          tags: test/${{ matrix.service }}:ci
+
+      - name: Run smoke container and capture logs
+        run: |
+          set -eux
+          IMAGE=test/${{ matrix.service }}:ci
+          CONTAINER=ci-${{ matrix.service }}
+          docker run -d --name $CONTAINER $IMAGE || true
+          sleep 5
+          docker logs $CONTAINER --tail 200 || true
+          docker rm -f $CONTAINER || true
+
+  deploy-to-ec2:
+    name: Deploy to EC2
+    needs: build-and-smoke
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH to EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_SSH_PORT || 22 }}
+          script: |
+            set -eux
+            TARGET_DIR=${{ secrets.EC2_PATH || '/home/ubuntu/tacticai' }}
+
+            if [ -d "$TARGET_DIR/.git" ]; then
+              cd "$TARGET_DIR" && git fetch --all && git reset --hard origin/main
+            else
+              rm -rf "$TARGET_DIR" || true
+              git clone https://github.com/${{ github.repository }} "$TARGET_DIR"
+            fi
+
+            # If ENV_B64 secret is provided, restore .env
+            if [ -n "${{ secrets.ENV_B64 || '' }}" ]; then
+              echo "${{ secrets.ENV_B64 }}" | base64 -d > "$TARGET_DIR/.env"
+            fi
+
+            # Ensure docker is running
+            if ! sudo systemctl is-active --quiet docker; then
+              sudo systemctl start docker
+            fi
+
+            # Use docker compose to pull and restart
+            sudo docker compose -f "$TARGET_DIR/docker-compose.yml" pull || true
+            sudo docker compose -f "$TARGET_DIR/docker-compose.yml" up -d --build
+
+            # Cleanup images
+            sudo docker image prune -f
