@@ -3,8 +3,7 @@ import uuid
 from dotenv import load_dotenv
 
 # .env 파일 로드
-env_path = os.getenv("ENV_PATH", ".env")
-load_dotenv(env_path)
+load_dotenv()
 
 class Config:
     # 서버 식별

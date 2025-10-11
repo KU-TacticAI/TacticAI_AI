@@ -14,7 +14,7 @@ except Exception:
     _enqueue_db = None
 
 # MongoDB 컬렉션: GameInfo, GameDetailLog, AI_ExecutionLog, GameResult
-# MySQL 테이블: AI_Statistics
+# MySQL 테이블: ai_statistics
 
 # --- DB 연결 객체 전역 선언 및 초기화 ---
 mongodb_client = None
@@ -271,7 +271,7 @@ def insert_game_detail_log(data: GameDetailLogSchema):
 # --- MySQL ---
 def insert_ai_statistics(data: AIStatisticsSchema):
     """
-    AI_Statistics 테이블에 AI 통계 추가
+    ai_statistics 테이블에 AI 통계 추가
     """
     start = time.time()
     cursor = None
@@ -287,7 +287,7 @@ def insert_ai_statistics(data: AIStatisticsSchema):
             return False
         cursor = mysql_conn.cursor()
         query = """
-            INSERT INTO AI_Statistics 
+            INSERT INTO ai_statistics 
             (ai_id, game_count, wins, losses, draws, avg_turns, avg_response_time_ms, win_rate, updated_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
         """
@@ -299,7 +299,7 @@ def insert_ai_statistics(data: AIStatisticsSchema):
         affected = cursor.rowcount
         mysql_conn.commit()
         duration = time.time() - start
-        logger.info(f"Inserted AI_Statistics ai_id={data.ai_id}, affected={affected}, duration={duration:.3f}s")
+        logger.info(f"Inserted ai_statistics ai_id={data.ai_id}, affected={affected}, duration={duration:.3f}s")
         cursor.close()
         return True
     except Exception as e:
@@ -325,7 +325,7 @@ def insert_ai_statistics(data: AIStatisticsSchema):
 
 def update_ai_statistics(ai_id: int, win: int, draw: int, loss: int, turns: int, response_time_ms: int):
     """
-    AI_Statistics 테이블의 특정 AI 통계 갱신 (평균 계산 후 카운트 업데이트)
+    ai_statistics 테이블의 특정 AI 통계 갱신 (평균 계산 후 카운트 업데이트)
     입력: (ai_id, win, draw, loss, turns, response_time_ms)
     예시: (1, 1, 0, 0, 63, 455) - 승리, 63턴, 455ms 응답시간
     """
@@ -351,7 +351,7 @@ def update_ai_statistics(ai_id: int, win: int, draw: int, loss: int, turns: int,
         cursor = mysql_conn.cursor()
         
         update_query = """
-            UPDATE AI_Statistics
+            UPDATE ai_statistics
             SET
               avg_turns            = (avg_turns * game_count + %s) / (game_count + 1),
               avg_response_time_ms = (avg_response_time_ms * game_count + %s) / (game_count + 1),
@@ -373,7 +373,7 @@ def update_ai_statistics(ai_id: int, win: int, draw: int, loss: int, turns: int,
             logger.info(f"No rows updated for ai_id={ai_id}, attempting insert")
             from datetime import datetime
             insert_query = """
-                INSERT INTO AI_Statistics
+                INSERT INTO ai_statistics
                 (ai_id, game_count, wins, losses, draws, avg_turns, avg_response_time_ms, win_rate, updated_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
             """
@@ -386,7 +386,7 @@ def update_ai_statistics(ai_id: int, win: int, draw: int, loss: int, turns: int,
 
         mysql_conn.commit()
         duration = time.time() - start
-        logger.info(f"Updated AI_Statistics ai_id={ai_id}, affected={affected}, duration={duration:.3f}s")
+        logger.info(f"Updated ai_statistics ai_id={ai_id}, affected={affected}, duration={duration:.3f}s")
         cursor.close()
         return True
     except Exception as e:
@@ -497,13 +497,13 @@ def init_mysql():
 def ensure_mysql_schema(conn):
     """
     Ensure required MySQL tables exist; create them if missing.
-    Currently ensures AI_Statistics table.
+    Currently ensures ai_statistics table.
     """
     cursor = conn.cursor()
     try:
-        # Create AI_Statistics if not exists
+        # Create ai_statistics if not exists
         create_ai_stats = """
-        CREATE TABLE IF NOT EXISTS AI_Statistics (
+        CREATE TABLE IF NOT EXISTS ai_statistics (
             ai_id BIGINT PRIMARY KEY,
             game_count INT NOT NULL DEFAULT 0,
             wins INT NOT NULL DEFAULT 0,
@@ -517,7 +517,7 @@ def ensure_mysql_schema(conn):
         """
         cursor.execute(create_ai_stats)
         conn.commit()
-        logger.info("Ensured MySQL schema: AI_Statistics table ready")
+        logger.info("Ensured MySQL schema: ai_statistics table ready")
     finally:
         try:
             cursor.close()

@@ -13,7 +13,7 @@ from typing import Optional, Union
 from dotenv import load_dotenv
 
 # .env 파일 로드 (있는 경우) - override=True로 환경변수보다 .env 우선
-load_dotenv(override=True)
+load_dotenv()
 
 
 class Config:
