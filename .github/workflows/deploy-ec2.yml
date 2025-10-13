@@ -88,9 +88,12 @@ jobs:
               sudo systemctl start docker
             fi
 
-            # Use docker compose to pull and restart
-            sudo docker compose -f "$TARGET_DIR/docker-compose.yml" pull || true
-            sudo docker compose -f "$TARGET_DIR/docker-compose.yml" up -d --build
+            # Change to target directory for docker compose commands
+            cd "$TARGET_DIR"
+            
+            # Use docker compose with relative path (we're already in TARGET_DIR)
+            sudo docker compose pull || true
+            sudo docker compose up -d --build
 
             # Cleanup images
             sudo docker image prune -f
