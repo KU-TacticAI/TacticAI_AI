@@ -40,10 +40,24 @@ jobs:
     name: Deploy to EC2
     if: github.ref == 'refs/heads/test'
     runs-on: ubuntu-latest
-    environment: production
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+      - name: Validate EC2 secrets
+        run: |
+          set -eu
+          if [ -z "${{ secrets.EC2_HOST || '' }}" ]; then
+            echo "ERROR: EC2_HOST secret is not set. Add repository secret 'EC2_HOST' (EC2 IP or hostname)."
+            exit 1
+          fi
+          if [ -z "${{ secrets.EC2_USER || '' }}" ]; then
+            echo "ERROR: EC2_USER secret is not set. Add repository secret 'EC2_USER' (ssh user)."
+            exit 1
+          fi
+          if [ -z "${{ secrets.EC2_SSH_KEY || '' }}" ]; then
+            echo "ERROR: EC2_SSH_KEY secret is not set. Add repository secret 'EC2_SSH_KEY' (private key)."
+            exit 1
+          fi
 
       - name: Deploy via SSH to EC2
         uses: appleboy/ssh-action@v1.2.0
