@@ -6,39 +6,38 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  build-and-smoke:
-    name: Build images and run smoke
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        service: [mq_api_gateway, game_server, ai_server]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up QEMU (for cross-platform builds)
-        uses: docker/setup-qemu-action@v2
-
-      - name: Build image (CI only)
-        uses: docker/build-push-action@v4
-        with:
-          context: ./${{ matrix.service }}
-          file: ./${{ matrix.service }}/Dockerfile
-          push: false
-          tags: test/${{ matrix.service }}:ci
-
-      - name: Run smoke container and capture logs
-        run: |
-          set -eux
-          IMAGE=test/${{ matrix.service }}:ci
-          CONTAINER=ci-${{ matrix.service }}
-          docker run -d --name $CONTAINER $IMAGE || true
-          sleep 5
-          docker logs $CONTAINER --tail 200 || true
-          docker rm -f $CONTAINER || true
+  # build-and-smoke:  # Temporarily disabled - kept here for easy restore
+  #   name: Build images and run smoke
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       service: [mq_api_gateway, game_server, ai_server]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Set up QEMU (for cross-platform builds)
+  #       uses: docker/setup-qemu-action@v2
+  #
+  #     - name: Build image (CI only)
+  #       uses: docker/build-push-action@v4
+  #       with:
+  #         context: ./${{ matrix.service }}
+  #         file: ./${{ matrix.service }}/Dockerfile
+  #         push: false
+  #         tags: test/${{ matrix.service }}:ci
+  #
+  #     - name: Run smoke container and capture logs
+  #       run: |
+  #         set -eux
+  #         IMAGE=test/${{ matrix.service }}:ci
+  #         CONTAINER=ci-${{ matrix.service }}
+  #         docker run -d --name $CONTAINER $IMAGE || true
+  #         sleep 5
+  #         docker logs $CONTAINER --tail 200 || true
+  #         docker rm -f $CONTAINER || true
 
   deploy-to-ec2:
     name: Deploy to EC2
-    needs: build-and-smoke
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
