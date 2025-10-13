@@ -63,9 +63,24 @@ jobs:
               git clone --branch develop --single-branch https://github.com/${{ github.repository }} "$TARGET_DIR"
             fi
 
-            # If ENV_B64 secret is provided, restore .env
+            # If ENV_B64 secret is provided, restore .env safely
             if [ -n "${{ secrets.ENV_B64 || '' }}" ]; then
-              echo "${{ secrets.ENV_B64 }}" | base64 -d > "$TARGET_DIR/.env"
+              echo "Restoring .env file..."
+              # Ensure target directory exists
+              mkdir -p "$TARGET_DIR"
+              # Write to temp file to avoid pipe issues with long secrets
+              printf '%s' "${{ secrets.ENV_B64 }}" > /tmp/env_b64.tmp
+              # Decode with explicit error handling
+              if ! base64 -d /tmp/env_b64.tmp > "$TARGET_DIR/.env" 2>/tmp/base64_error.log; then
+                echo "ERROR: base64 decode failed. Check ENV_B64 secret is valid base64 (UTF-8, no headers/footers)."
+                cat /tmp/base64_error.log || true
+                rm -f /tmp/env_b64.tmp /tmp/base64_error.log
+                exit 1
+              fi
+              rm -f /tmp/env_b64.tmp
+              echo ".env restored successfully ($(stat -c%s "$TARGET_DIR/.env") bytes)"
+            else
+              echo "ENV_B64 not set, skipping .env restore"
             fi
 
             # Ensure docker is running
