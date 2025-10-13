@@ -40,6 +40,7 @@ jobs:
     name: Deploy to EC2
     if: github.ref == 'refs/heads/test'
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
