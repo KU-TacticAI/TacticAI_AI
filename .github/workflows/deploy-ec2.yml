@@ -57,10 +57,10 @@ jobs:
             TARGET_DIR=${{ secrets.EC2_PATH || '/home/ubuntu/tacticai' }}
 
             if [ -d "$TARGET_DIR/.git" ]; then
-              cd "$TARGET_DIR" && git fetch --all && git reset --hard origin/main
+              cd "$TARGET_DIR" && git fetch --all && git reset --hard origin/develop
             else
               rm -rf "$TARGET_DIR" || true
-              git clone https://github.com/${{ github.repository }} "$TARGET_DIR"
+              git clone --branch develop --single-branch https://github.com/${{ github.repository }} "$TARGET_DIR"
             fi
 
             # If ENV_B64 secret is provided, restore .env
