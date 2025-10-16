@@ -74,10 +74,10 @@ jobs:
               if ! base64 -d /tmp/env_b64.tmp > "$TARGET_DIR/.env" 2>/tmp/base64_error.log; then
                 echo "ERROR: base64 decode failed. Check ENV_B64 secret is valid base64 (UTF-8, no headers/footers)."
                 cat /tmp/base64_error.log || true
-                rm -f /tmp/env_b64.tmp /tmp/base64_error.log
+                # rm -f /tmp/env_b64.tmp /tmp/base64_error.log
                 exit 1
               fi
-              rm -f /tmp/env_b64.tmp
+              # rm -f /tmp/env_b64.tmp
               echo ".env restored successfully ($(stat -c%s "$TARGET_DIR/.env") bytes)"
             else
               echo "ENV_B64 not set, skipping .env restore"
