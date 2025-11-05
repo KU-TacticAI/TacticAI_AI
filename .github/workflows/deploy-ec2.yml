@@ -45,7 +45,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Deploy via SSH to EC2
+      - name: Pull latest code and restore .env
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -83,10 +83,49 @@ jobs:
               echo "ENV_B64 not set, skipping .env restore"
             fi
 
+      - name: Setup RabbitMQ
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_SSH_PORT || 22 }}
+          script: |
+            set -eux
+            TARGET_DIR=${{ secrets.EC2_PATH || '/home/ubuntu/tacticai' }}
+
             # Ensure docker is running
             if ! sudo systemctl is-active --quiet docker; then
               sudo systemctl start docker
             fi
+
+            # Setup RabbitMQ
+            echo "=== Setting up RabbitMQ ==="
+            cd "$TARGET_DIR"
+            
+            # Make script executable
+            chmod +x scripts/setup-rabbitmq.sh
+            
+            # Run RabbitMQ setup script
+            # Load RabbitMQ credentials from .env if available
+            if [ -f .env ]; then
+              export $(grep -v '^#' .env | grep -E 'RABBITMQ_' | xargs)
+            fi
+            
+            sudo -E bash scripts/setup-rabbitmq.sh
+            
+            echo "=== RabbitMQ setup completed ==="
+
+      - name: Deploy application services
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_SSH_PORT || 22 }}
+          script: |
+            set -eux
+            TARGET_DIR=${{ secrets.EC2_PATH || '/home/ubuntu/tacticai' }}
 
             # Change to target directory for docker compose commands
             cd "$TARGET_DIR"
