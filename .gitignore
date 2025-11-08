@@ -5,6 +5,3 @@ __pycache__/
 env_example
 models/
 */models/
-diagrams/
-.vscode/
-*.md
