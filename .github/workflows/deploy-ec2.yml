@@ -1,4 +1,4 @@
-name: CI & Deploy - build, smoke, deploy to EC2
+name: Deploy to EC2
 
 on:
   push:
@@ -6,45 +6,12 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  # build-and-smoke:  # Temporarily disabled - kept here for easy restore
-  #   name: Build images and run smoke
-  #   runs-on: ubuntu-latest
-  #   strategy:
-  #     matrix:
-  #       service: [mq_api_gateway, game_server, ai_server]
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #
-  #     - name: Set up QEMU (for cross-platform builds)
-  #       uses: docker/setup-qemu-action@v2
-  #
-  #     - name: Build image (CI only)
-  #       uses: docker/build-push-action@v4
-  #       with:
-  #         context: ./${{ matrix.service }}
-  #         file: ./${{ matrix.service }}/Dockerfile
-  #         push: false
-  #         tags: test/${{ matrix.service }}:ci
-  #
-  #     - name: Run smoke container and capture logs
-  #       run: |
-  #         set -eux
-  #         IMAGE=test/${{ matrix.service }}:ci
-  #         CONTAINER=ci-${{ matrix.service }}
-  #         docker run -d --name $CONTAINER $IMAGE || true
-  #         sleep 5
-  #         docker logs $CONTAINER --tail 200 || true
-  #         docker rm -f $CONTAINER || true
-
-  deploy-to-ec2:
+  deploy:
     name: Deploy to EC2
     runs-on: ubuntu-latest
     environment: TacticAI
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Deploy via SSH to EC2
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -55,6 +22,7 @@ jobs:
             set -eux
             TARGET_DIR=${{ secrets.EC2_PATH || '/home/ubuntu/tacticai' }}
 
+            # 1. Git clone or pull
             if [ -d "$TARGET_DIR/.git" ]; then
               cd "$TARGET_DIR" && git fetch --all && git reset --hard origin/develop
             else
@@ -62,63 +30,20 @@ jobs:
               git clone --branch develop --single-branch https://github.com/${{ github.repository }} "$TARGET_DIR"
             fi
 
-            # If ENV_B64 secret is provided, restore .env safely
-            RESTORED_ENV=0
+            # 2. Restore .env from secret
             if [ -n "${{ secrets.ENV_B64 || '' }}" ]; then
-              date -u +"%Y-%m-%dT%H:%M:%SZ" && echo "Restoring .env file..."
-              # Ensure target directory exists
-              mkdir -p "$TARGET_DIR"
-              # Backup existing .env if present
-              if [ -f "$TARGET_DIR/.env" ]; then
-                cp "$TARGET_DIR/.env" "$TARGET_DIR/.env.bak.$(date -u +%s)" || true
-              fi
-              # Write to temp file to avoid pipe issues with long secrets, then atomically move
-              printf '%s' "${{ secrets.ENV_B64 }}" > /tmp/env_b64.tmp
-              if ! base64 -d /tmp/env_b64.tmp > /tmp/.env.tmp 2>/tmp/base64_error.log; then
-                echo "ERROR: base64 decode failed. Check ENV_B64 secret is valid base64 (UTF-8, no headers/footers)."
-                cat /tmp/base64_error.log || true
-                rm -f /tmp/env_b64.tmp /tmp/base64_error.log /tmp/.env.tmp
-                exit 1
-              fi
-              # Atomically move into place
-              mv /tmp/.env.tmp "$TARGET_DIR/.env"
-              rm -f /tmp/env_b64.tmp
-              echo ".env restored successfully ($(stat -c'%y %s' "$TARGET_DIR/.env"))"
-              RESTORED_ENV=1
-            else
-              echo "ENV_B64 not set, skipping .env restore"
+              echo "Restoring .env..."
+              printf '%s' "${{ secrets.ENV_B64 }}" | base64 -d > "$TARGET_DIR/.env"
+              echo ".env restored ($(stat -c%s "$TARGET_DIR/.env") bytes)"
             fi
 
-            # Ensure docker is running
-            if ! sudo systemctl is-active --quiet docker; then
-              sudo systemctl start docker
-            fi
-
-            # Change to target directory for docker compose commands
+            # 3. Docker build and run
             cd "$TARGET_DIR"
-            
-            # Use docker compose with relative path (we're already in TARGET_DIR)
-            sudo docker compose pull || true
             sudo docker compose up -d --build --force-recreate
 
-            # Cleanup images
-            sudo docker image prune -f
-            
-            # If this run restored .env, remove it from host after containers are up (avoid leaving secrets)
-            if [ "$RESTORED_ENV" -eq 1 ]; then
-              echo "RESTORED_ENV=$RESTORED_ENV"
-              echo "Listing target directory before removal:"
-              ls -la "$TARGET_DIR" || true
-              echo "Removing restored .env from host to avoid leaving secrets..."
-              # Use a sudo shell to ensure commands run with proper privileges and outputs are captured
-              # Run removal in a shell where TARGET_DIR is defined to avoid unbound variable errors
-              sudo sh -c "TARGET_DIR='${TARGET_DIR}'; set -eux; \
-                if command -v shred >/dev/null 2>&1; then \
-                  shred -uz \"\$TARGET_DIR/.env\" || rm -f \"\$TARGET_DIR/.env\"; \
-                else \
-                  rm -f \"\$TARGET_DIR/.env\"; \
-                fi"
-              echo "Listing target directory after removal:"
-              ls -la "$TARGET_DIR" || true
-              echo ".env removal step completed"
+            # 4. Remove .env after deployment
+            if [ -f "$TARGET_DIR/.env" ]; then
+              echo "Removing .env..."
+              sudo rm -f "$TARGET_DIR/.env"
+              echo ".env removed"
             fi
