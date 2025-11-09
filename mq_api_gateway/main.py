@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="MQ API Gateway", description="게임 서버와 RabbitMQ 간의 API Gateway")
 
+# 앱 시작 시간 (헬스체크용)
+START_TIME = None
+
 # ✅ CORS 미들웨어 추가
 app.add_middleware(
     CORSMiddleware,
@@ -33,6 +36,8 @@ app.add_middleware(
 async def startup_event():
     """앱 시작 시 실행"""
     print("MQ API Gateway 시작...")
+    global START_TIME
+    START_TIME = datetime.utcnow()
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -40,7 +45,23 @@ async def shutdown_event():
     print("MQ API Gateway 종료...")
     close_rabbitmq_client()
 
-@app.post("/game-request", response_model=GameRequestResponse)
+
+@app.get("/health")
+def health_check():
+    """간단한 헬스체크 엔드포인트
+    반환: status, timestamp, uptime(초)
+    """
+    now = datetime.utcnow()
+    uptime = None
+    if START_TIME is not None:
+        uptime = (now - START_TIME).total_seconds()
+    return {
+        "status": "ok",
+        "timestamp": now.isoformat(),
+        "uptime": uptime,
+    }
+
+@app.post("/ai/game-request", response_model=GameRequestResponse)
 def create_game_request(request: GameRequestCreate):
     """게임 요청을 RabbitMQ로 전송"""
     try:
@@ -87,7 +108,7 @@ def create_game_request(request: GameRequestCreate):
         )
 
 
-@app.get("/progress/{game_id}/{player_id}", response_model=List[GameProgressResponse])
+@app.get("/ai/progress/{game_id}/{player_id}", response_model=List[GameProgressResponse])
 def get_game_progress(game_id: str,player_id:str, n: int = Query(10, gt=0)):
     """게임 진행상황 조회"""
     try:

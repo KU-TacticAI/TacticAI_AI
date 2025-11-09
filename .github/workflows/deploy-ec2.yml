@@ -2,7 +2,7 @@ name: CI & Deploy - build, smoke, deploy to EC2
 
 on:
   push:
-    branches: [ test ]
+    branches: [ main ]
   workflow_dispatch: {}
 
 jobs:
