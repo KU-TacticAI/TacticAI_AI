@@ -28,23 +28,21 @@ jobs:
             else
               rm -rf "$TARGET_DIR" || true
               git clone --branch develop --single-branch https://github.com/${{ github.repository }} "$TARGET_DIR"
+              cd "$TARGET_DIR"
             fi
 
             # 2. Restore .env from secret
             if [ -n "${{ secrets.ENV_B64 || '' }}" ]; then
               echo "Restoring .env..."
-              cd "$TARGET_DIR"
               printf '%s' "${{ secrets.ENV_B64 }}" | base64 -d > .env
               echo ".env restored ($(stat -c%s .env) bytes)"
               ls -la .env
             fi
 
             # 3. Docker build and run
-            cd "$TARGET_DIR"
             sudo docker compose up -d --build --force-recreate
 
             # 4. Remove .env after deployment
-            cd "$TARGET_DIR"
             if [ -f .env ]; then
               echo "Removing .env..."
               sudo rm -f .env
