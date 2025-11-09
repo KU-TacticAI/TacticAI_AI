@@ -63,6 +63,7 @@ jobs:
             fi
 
             # If ENV_B64 secret is provided, restore .env safely
+            RESTORED_ENV=0
             if [ -n "${{ secrets.ENV_B64 || '' }}" ]; then
               date -u +"%Y-%m-%dT%H:%M:%SZ" && echo "Restoring .env file..."
               # Ensure target directory exists
@@ -83,6 +84,7 @@ jobs:
               mv /tmp/.env.tmp "$TARGET_DIR/.env"
               rm -f /tmp/env_b64.tmp
               echo ".env restored successfully ($(stat -c'%y %s' "$TARGET_DIR/.env"))"
+              RESTORED_ENV=1
             else
               echo "ENV_B64 not set, skipping .env restore"
             fi
@@ -101,3 +103,14 @@ jobs:
 
             # Cleanup images
             sudo docker image prune -f
+            
+            # If this run restored .env, remove it from host after containers are up (avoid leaving secrets)
+            if [ "$RESTORED_ENV" -eq 1 ]; then
+              echo "Removing restored .env from host to avoid leaving secrets..."
+              if command -v shred >/dev/null 2>&1; then
+                sudo shred -uz "$TARGET_DIR/.env" || sudo rm -f "$TARGET_DIR/.env"
+              else
+                sudo rm -f "$TARGET_DIR/.env"
+              fi
+              echo ".env removed"
+            fi
