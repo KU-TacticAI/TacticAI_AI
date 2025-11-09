@@ -180,7 +180,7 @@ class Config:
         if self.MONGO_USER and self.MONGO_PASSWORD:
             return (
                 f"mongodb://{self.MONGO_USER}:{self.MONGO_PASSWORD}" 
-                f"@{self.MONGO_HOST}:{self.MONGO_PORT}/{self.MONGO_DB_NAME}?authSource={self.MONGO_DB_NAME}"
+                f"@{self.MONGO_HOST}:{self.MONGO_PORT}/{self.MONGO_DB_NAME}?authSource=admin"
             )
         else:
             return f"mongodb://{self.MONGO_HOST}:{self.MONGO_PORT}/{self.MONGO_DB_NAME}"
