@@ -33,8 +33,10 @@ jobs:
             # 2. Restore .env from secret
             if [ -n "${{ secrets.ENV_B64 || '' }}" ]; then
               echo "Restoring .env..."
-              printf '%s' "${{ secrets.ENV_B64 }}" | base64 -d > "$TARGET_DIR/.env"
-              echo ".env restored ($(stat -c%s "$TARGET_DIR/.env") bytes)"
+              cd "$TARGET_DIR"
+              printf '%s' "${{ secrets.ENV_B64 }}" | base64 -d > .env
+              echo ".env restored ($(stat -c%s .env) bytes)"
+              ls -la .env
             fi
 
             # 3. Docker build and run
@@ -42,8 +44,9 @@ jobs:
             sudo docker compose up -d --build --force-recreate
 
             # 4. Remove .env after deployment
-            if [ -f "$TARGET_DIR/.env" ]; then
+            cd "$TARGET_DIR"
+            if [ -f .env ]; then
               echo "Removing .env..."
-              sudo rm -f "$TARGET_DIR/.env"
+              sudo rm -f .env
               echo ".env removed"
             fi
