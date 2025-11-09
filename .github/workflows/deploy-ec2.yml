@@ -92,7 +92,7 @@ jobs:
             
             # Use docker compose with relative path (we're already in TARGET_DIR)
             sudo docker compose pull || true
-            sudo docker compose up -d --build
+            sudo docker compose up -d --build --force-recreate
 
             # Cleanup images
             sudo docker image prune -f
