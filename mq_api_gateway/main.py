@@ -60,7 +60,7 @@ def health_check():
         "timestamp": now.isoformat(),
         "uptime": uptime,
     }
-
+@app.post("/game-request", response_model=GameRequestResponse)
 @app.post("/ai/game-request", response_model=GameRequestResponse)
 def create_game_request(request: GameRequestCreate):
     """게임 요청을 RabbitMQ로 전송"""
