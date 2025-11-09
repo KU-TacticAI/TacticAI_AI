@@ -38,7 +38,6 @@ jobs:
 
   deploy-to-ec2:
     name: Deploy to EC2
-    if: github.ref == 'refs/heads/test'
     runs-on: ubuntu-latest
     environment: TacticAI
     steps:
