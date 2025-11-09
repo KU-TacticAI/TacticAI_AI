@@ -96,3 +96,30 @@ jobs:
 
             # Cleanup images
             sudo docker image prune -f
+            
+            # --- Post-deploy verification: ensure .env values applied to containers
+            echo "Verifying container environment variables..."
+            # Read the expected value from the restored .env
+            EXPECTED_ENVIRONMENT=$(grep -E '^ENVIRONMENT=' "$TARGET_DIR/.env" | cut -d'=' -f2- || true)
+            echo "Expected ENVIRONMENT='$EXPECTED_ENVIRONMENT'"
+
+            # Define service container name patterns (as in compose)
+            SERVICES=(tacticai-mq-gateway tacticai-game-server tacticai-ai-server)
+
+            for svc in "${SERVICES[@]}"; do
+              # Wait briefly for container to be fully up
+              sleep 2
+              if ! sudo docker ps --format '{{.Names}}' | grep -q "${svc}"; then
+                echo "ERROR: container ${svc} not running"
+                sudo docker ps --format '{{.Names}}'
+                exit 1
+              fi
+
+              ACTUAL=$(sudo docker exec "${svc}" env | grep -E '^ENVIRONMENT=' | cut -d'=' -f2- || true)
+              echo "${svc}: ENVIRONMENT='${ACTUAL}'"
+              if [ "${EXPECTED_ENVIRONMENT}" != "${ACTUAL}" ]; then
+                echo "ERROR: ENVIRONMENT mismatch for ${svc} (expected='${EXPECTED_ENVIRONMENT}', actual='${ACTUAL}')"
+                exit 1
+              fi
+            done
+            echo "Container environment verification passed."
