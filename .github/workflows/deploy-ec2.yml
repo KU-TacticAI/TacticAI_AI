@@ -106,11 +106,19 @@ jobs:
             
             # If this run restored .env, remove it from host after containers are up (avoid leaving secrets)
             if [ "$RESTORED_ENV" -eq 1 ]; then
+              echo "RESTORED_ENV=$RESTORED_ENV"
+              echo "Listing target directory before removal:"
+              ls -la "$TARGET_DIR" || true
               echo "Removing restored .env from host to avoid leaving secrets..."
-              if command -v shred >/dev/null 2>&1; then
-                sudo shred -uz "$TARGET_DIR/.env" || sudo rm -f "$TARGET_DIR/.env"
-              else
-                sudo rm -f "$TARGET_DIR/.env"
-              fi
-              echo ".env removed"
+              # Use a sudo shell to ensure commands run with proper privileges and outputs are captured
+              sudo bash -eux -c '
+                if command -v shred >/dev/null 2>&1; then
+                  shred -uz """$TARGET_DIR/.env""" || rm -f """$TARGET_DIR/.env""";
+                else
+                  rm -f """$TARGET_DIR/.env""";
+                fi
+              '
+              echo "Listing target directory after removal:"
+              ls -la "$TARGET_DIR" || true
+              echo ".env removal step completed"
             fi
