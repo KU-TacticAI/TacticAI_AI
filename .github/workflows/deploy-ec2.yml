@@ -111,13 +111,13 @@ jobs:
               ls -la "$TARGET_DIR" || true
               echo "Removing restored .env from host to avoid leaving secrets..."
               # Use a sudo shell to ensure commands run with proper privileges and outputs are captured
-              sudo bash -eux -c '
-                if command -v shred >/dev/null 2>&1; then
-                  shred -uz """$TARGET_DIR/.env""" || rm -f """$TARGET_DIR/.env""";
-                else
-                  rm -f """$TARGET_DIR/.env""";
-                fi
-              '
+              # Run removal in a shell where TARGET_DIR is defined to avoid unbound variable errors
+              sudo sh -c "TARGET_DIR='${TARGET_DIR}'; set -eux; \
+                if command -v shred >/dev/null 2>&1; then \
+                  shred -uz \"\$TARGET_DIR/.env\" || rm -f \"\$TARGET_DIR/.env\"; \
+                else \
+                  rm -f \"\$TARGET_DIR/.env\"; \
+                fi"
               echo "Listing target directory after removal:"
               ls -la "$TARGET_DIR" || true
               echo ".env removal step completed"
