@@ -188,7 +188,7 @@ def update_game_info_winner(gameinfo_id: str, winner_ai_id: int) -> bool:
             logger.error(f"Invalid gameinfo_id for winner update: {gameinfo_id}")
             return False
         oid = ObjectId(gameinfo_id)
-        result = db.GameInfo.update_one({"_id": oid}, {"$set": {"winner_ai_id": winner_ai_id}})
+        result = db['game_info'].update_one({"_id": oid}, {"$set": {"winner_ai_id": winner_ai_id}})
         if result.modified_count > 0:
             logger.info(f"GameInfo winner updated: gameinfo_id={gameinfo_id}, winner_ai_id={winner_ai_id}")
             return True
@@ -226,7 +226,7 @@ def insert_game_info(data: GameInfoSchema, client_gameinfo_id: str = None):
         if client_gameinfo_id:
             # store the client id so queued logs can be resolved later
             doc['client_gameinfo_id'] = client_gameinfo_id
-        result = db.GameInfo.insert_one(doc)
+        result = db['game_info'].insert_one(doc)
         return str(result.inserted_id)
     except Exception as e:
         try:
@@ -256,7 +256,7 @@ def insert_game_detail_log(data: GameDetailLogSchema):
                 pass
             return None
         db = mongodb_client[get_config().MONGO_DB_NAME]
-        result = db.GameDetailLog.insert_one(asdict(data))
+        result = db['game_detail_log'].insert_one(asdict(data))
         return str(result.inserted_id)
     except Exception as e:
         try:
@@ -445,14 +445,14 @@ def ensure_mongodb_schema(client: MongoClient):
 
     # Ensure GameInfo collection
     try:
-        if 'GameInfo' not in existing:
-            db.create_collection('GameInfo')
-            logger.info('Created MongoDB collection: GameInfo')
+        if 'game_info' not in existing:
+            db.create_collection('game_info')
+            logger.info('Created MongoDB collection: game_info')
         # indexes
         try:
-            db.GameInfo.create_index('created_at')
-            db.GameInfo.create_index('winner_ai_id')
-            db.GameInfo.create_index('game_type')
+            db.game_info.create_index('created_at')
+            db.game_info.create_index('winner_ai_id')
+            db.game_info.create_index('game_type')
         except Exception as ie:
             logger.debug(f'Could not create GameInfo indexes: {ie}')
     except Exception as e:
@@ -460,13 +460,13 @@ def ensure_mongodb_schema(client: MongoClient):
 
     # Ensure GameDetailLog collection
     try:
-        if 'GameDetailLog' not in existing:
-            db.create_collection('GameDetailLog')
-            logger.info('Created MongoDB collection: GameDetailLog')
+        if 'game_detail_log' not in existing:
+            db.create_collection('game_detail_log')
+            logger.info('Created MongoDB collection: game_detail_log')
         # indexes
         try:
-            db.GameDetailLog.create_index('gameinfo_id')
-            db.GameDetailLog.create_index([('ai_id', 1), ('turn_count', 1)])
+            db.game_detail_log.create_index('gameinfo_id')
+            db.game_detail_log.create_index([('ai_id', 1), ('turn_count', 1)])
         except Exception as ie:
             logger.debug(f'Could not create GameDetailLog indexes: {ie}')
     except Exception as e:
