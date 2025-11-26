@@ -168,38 +168,85 @@ class AIStatisticsSchema:
     avg_response_time_ms: int
     win_rate: float
 
+
 def update_game_info_winner(gameinfo_id: str, winner_ai_id: int) -> bool:
     """
     Update the GameInfo document's winner_ai_id field.
+    Supports lookup by MongoDB ObjectId OR client_gameinfo_id.
     """
     try:
         if not ensure_mongodb_connected():
-            logger.error("Cannot update GameInfo winner because MongoDB is not connected")
+            logger.error(
+                "Cannot update GameInfo winner because MongoDB is not connected")
             # enqueue for later if configured
             try:
                 cfg = get_config()
                 if cfg.DB_USE_PERSISTENT_QUEUE and _enqueue_db:
-                    _enqueue_db('update_game_info_winner', {'gameinfo_id': gameinfo_id, 'winner_ai_id': winner_ai_id})
+                    _enqueue_db('update_game_info_winner',
+                                {'gameinfo_id': gameinfo_id,
+                                 'winner_ai_id': winner_ai_id})
             except Exception:
                 pass
             return False
+
         db = mongodb_client[get_config().MONGO_DB_NAME]
-        if not ObjectId.is_valid(gameinfo_id):
-            logger.error(f"Invalid gameinfo_id for winner update: {gameinfo_id}")
-            return False
-        oid = ObjectId(gameinfo_id)
-        result = db['game_info'].update_one({"_id": oid}, {"$set": {"winner_ai_id": winner_ai_id}})
+
+        # Try both methods: first as ObjectId, then as client_gameinfo_id
+        query = {}
+        if ObjectId.is_valid(gameinfo_id):
+            query = {"_id": ObjectId(gameinfo_id)}
+            result = db['game_info'].update_one(query, {
+                "$set": {"winner_ai_id": winner_ai_id}})
+
+            # If not found by ObjectId, try client_gameinfo_id as fallback
+            if result.matched_count == 0:
+                logger.debug(
+                    f"Not found by ObjectId, trying client_gameinfo_id: {gameinfo_id}")
+                query = {"client_gameinfo_id": gameinfo_id}
+                result = db['game_info'].update_one(query, {
+                    "$set": {"winner_ai_id": winner_ai_id}})
+        else:
+            # Not a valid ObjectId, use client_gameinfo_id directly
+            query = {"client_gameinfo_id": gameinfo_id}
+            result = db['game_info'].update_one(query, {
+                "$set": {"winner_ai_id": winner_ai_id}})
+
         if result.modified_count > 0:
-            logger.info(f"GameInfo winner updated: gameinfo_id={gameinfo_id}, winner_ai_id={winner_ai_id}")
+            logger.info(
+                f"GameInfo winner updated: gameinfo_id={gameinfo_id}, winner_ai_id={winner_ai_id}")
             return True
         else:
             if result.matched_count == 0:
-                logger.warning(f"GameInfo document not found for id: {gameinfo_id}")
+                logger.warning(
+                    f"GameInfo document not found: gameinfo_id={gameinfo_id}")
+                # Enqueue for retry in case document is being created
+                try:
+                    cfg = get_config()
+                    if cfg.DB_USE_PERSISTENT_QUEUE and _enqueue_db:
+                        _enqueue_db('update_game_info_winner',
+                                    {'gameinfo_id': gameinfo_id,
+                                     'winner_ai_id': winner_ai_id})
+                        logger.info(
+                            f"Enqueued winner update for retry: {gameinfo_id}")
+                except Exception:
+                    pass
                 return False
-            logger.info(f"GameInfo winner not changed (possibly same value): gameinfo_id={gameinfo_id}")
+            logger.info(
+                f"GameInfo winner not changed (same value): gameinfo_id={gameinfo_id}")
             return True
+
     except Exception as e:
-        logger.exception(f"Failed to update GameInfo winner: gameinfo_id={gameinfo_id}, winner_ai_id={winner_ai_id}, error={e}")
+        logger.exception(
+            f"Failed to update GameInfo winner: gameinfo_id={gameinfo_id}, winner_ai_id={winner_ai_id}, error={e}")
+        # Enqueue on exception
+        try:
+            cfg = get_config()
+            if cfg.DB_USE_PERSISTENT_QUEUE and _enqueue_db:
+                _enqueue_db('update_game_info_winner',
+                            {'gameinfo_id': gameinfo_id,
+                             'winner_ai_id': winner_ai_id})
+        except Exception:
+            pass
         return False
 
 # --- MongoDB ---
