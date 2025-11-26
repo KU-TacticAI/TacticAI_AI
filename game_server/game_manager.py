@@ -383,39 +383,67 @@ class GameManager:
         """게임 종료 후 상태 정리"""
         game = self.games.get(game_id)
         meta = self.game_meta.get(game_id)
-        
+
         # GameResult 기록 및 AI 통계 업데이트 (게임 상태 정리 전에)
         if self.db_available and game and meta:
             try:
                 # 승자 결정
                 winner = game.get_winner() if game.is_game_over() else None
                 winner_ai_id = None
-                
+
                 if winner is not None:
-                    # 플레이어 목록에서 찾아서 해당하는 model_id 사용
-                    player_index = meta["players"].index(winner)
-                    winner_ai_id = int(meta["model_ids"][player_index])
-                    self.logger.info(f"승자 매핑: player={winner} (index={player_index}) → ai_id={winner_ai_id}")
-                
-                # GameResult collection removed; store winner in GameInfo.winner_ai_id
+                    try:
+                        # winner는 플레이어 인덱스(0, 1, ...)일 가능성이 높음
+                        if isinstance(winner, int) and 0 <= winner < len(
+                            meta["model_ids"]):
+                            # winner가 이미 인덱스인 경우
+                            winner_ai_id = int(meta["model_ids"][winner])
+                            self.logger.info(
+                                f"승자 매핑 (인덱스): index={winner} → ai_id={winner_ai_id}")
+                        elif isinstance(winner, str):
+                            # winner가 문자열인 경우 (플레이어 이름)
+                            if winner in meta["players"]:
+                                player_index = meta["players"].index(winner)
+                                winner_ai_id = int(
+                                    meta["model_ids"][player_index])
+                                self.logger.info(
+                                    f"승자 매핑 (이름): player={winner} (index={player_index}) → ai_id={winner_ai_id}")
+                            else:
+                                self.logger.warning(
+                                    f"승자를 플레이어 목록에서 찾을 수 없음: winner={winner}, players={meta['players']}")
+                        else:
+                            self.logger.warning(
+                                f"알 수 없는 승자 형식: winner={winner} (type={type(winner)})")
+                    except (ValueError, IndexError) as e:
+                        self.logger.error(
+                            f"승자 매핑 중 오류: winner={winner}, players={meta['players']}, error={e}")
+                else:
+                    self.logger.info(f"무승부로 종료: game_id={game_id}")
+
+                # GameInfo의 winner_ai_id 업데이트
                 if meta.get("gameinfo_id"):
                     try:
-                        # fire-and-forget: let db layer enqueue if needed
-                        try:
-                            asyncio.create_task(self._async_update_winner(meta["gameinfo_id"], winner_ai_id))
-                        except Exception:
-                            asyncio.get_event_loop().create_task(self._async_update_winner(meta["gameinfo_id"], winner_ai_id))
-                    except Exception as e:
-                        self.logger.error(f"Failed to schedule GameInfo winner update: {e}")
-                
+                        asyncio.create_task(
+                            self._async_update_winner(meta["gameinfo_id"],
+                                                      winner_ai_id))
+                    except Exception:
+                        asyncio.get_event_loop().create_task(
+                            self._async_update_winner(meta["gameinfo_id"],
+                                                      winner_ai_id))
+
                 # AI 통계 업데이트 (백그라운드)
                 try:
-                    asyncio.create_task(self._update_ai_statistics_for_game(game_id, meta, winner_ai_id))
+                    asyncio.create_task(
+                        self._update_ai_statistics_for_game(game_id, meta,
+                                                            winner_ai_id))
                 except Exception:
-                    asyncio.get_event_loop().create_task(self._update_ai_statistics_for_game(game_id, meta, winner_ai_id))
-                
+                    asyncio.get_event_loop().create_task(
+                        self._update_ai_statistics_for_game(game_id, meta,
+                                                            winner_ai_id))
+
             except Exception as e:
-                self.logger.error(f"GameResult 기록 또는 AI 통계 업데이트 중 오류 발생: {game_id}, error={e}")
+                self.logger.error(
+                    f"GameResult 기록 또는 AI 통계 업데이트 중 오류 발생: {game_id}, error={e}")
 
         # 기존 정리 로직
         if game_id in self.games:
