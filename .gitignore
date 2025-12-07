@@ -1,7 +1,7 @@
 .venv
 /tests
 __pycache__/
-.env
+.env*
 env_example
 models/
 */models/
