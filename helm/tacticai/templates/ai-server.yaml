@@ -18,6 +18,10 @@ spec:
     spec:
       nodeSelector:
         {{- toYaml .Values.nodeSelector.gpu | nindent 8 }}
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
       containers:
       - name: ai-server
         image: {{ .Values.registry.host }}/{{ .Values.aiServer.image.repository }}:{{ .Values.aiServer.image.tag }}
