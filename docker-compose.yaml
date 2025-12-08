@@ -61,3 +61,8 @@ volumes:
   rabbitmq_data:
   mongodb_data:
   mysql_data:
+
+
+networks:
+  default:
+    name: tacticai-network

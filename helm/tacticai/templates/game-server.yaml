@@ -1,0 +1,46 @@
+{{- if .Values.gameServer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: game-server
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: game-server
+spec:
+  replicas: {{ .Values.gameServer.replicas }}
+  selector:
+    matchLabels:
+      app: game-server
+  template:
+    metadata:
+      labels:
+        app: game-server
+    spec:
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector.cpu | nindent 8 }}
+      containers:
+      - name: game-server
+        image: {{ .Values.registry.host }}/{{ .Values.gameServer.image.repository }}:{{ .Values.gameServer.image.tag }}
+        imagePullPolicy: {{ .Values.gameServer.image.pullPolicy }}
+        ports:
+        - containerPort: {{ .Values.gameServer.port }}
+        env:
+        {{- range $key, $value := .Values.gameServer.env }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: game-server
+  namespace: {{ .Values.namespace }}
+spec:
+  type: NodePort
+  selector:
+    app: game-server
+  ports:
+  - port: {{ .Values.gameServer.port }}
+    targetPort: {{ .Values.gameServer.port }}
+    nodePort: {{ .Values.gameServer.nodePort }}
+{{- end }}

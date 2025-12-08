@@ -1,0 +1,81 @@
+# TacticAI Helm Chart Values
+
+# Container Registry
+registry:
+  host: "172.31.35.34:5000"
+  
+# Namespace
+namespace: tacticai
+
+# Node Selectors
+nodeSelector:
+  gpu:
+    node-type: gpu
+  cpu:
+    node-type: cpu
+
+# AI Server
+aiServer:
+  enabled: true
+  replicas: 1
+  image:
+    repository: tacticai/ai-server
+    tag: develop
+    pullPolicy: Always
+  port: 8001
+  nodePort: 30081
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+  env:
+    RABBITMQ_HOST: "172.31.35.34"
+    RABBITMQ_PORT: "5672"
+    RABBITMQ_USER: "testuser"
+    RABBITMQ_PASSWORD: "testuserpw"
+    RABBITMQ_PREFETCH_COUNT: "5"
+
+# Game Server
+gameServer:
+  enabled: true
+  replicas: 1
+  image:
+    repository: tacticai/game-server
+    tag: develop
+    pullPolicy: Always
+  port: 8002
+  nodePort: 30082
+  env:
+    RABBITMQ_HOST: "172.31.35.34"
+    RABBITMQ_PORT: "5672"
+    RABBITMQ_USER: "testuser"
+    RABBITMQ_PASSWORD: "testuserpw"
+    RABBITMQ_PREFETCH_COUNT: "5"
+    MONGO_HOST: "172.31.35.34"
+    MONGO_PORT: "27017"
+    MONGO_USER: "testuser"
+    MONGO_PASSWORD: "testuserpw"
+    MONGO_DB_NAME: "tacticai"
+    MYSQL_HOST: "172.31.35.34"
+    MYSQL_PORT: "3306"
+    MYSQL_USER: "tacticai"
+    MYSQL_PASSWORD: "tacticaipw"
+    MYSQL_DATABASE: "tacticai"
+
+# MQ API Gateway
+mqApiGateway:
+  enabled: true
+  replicas: 1
+  image:
+    repository: tacticai/mq-api-gateway
+    tag: develop
+    pullPolicy: Always
+  port: 8000
+  nodePort: 30080
+  env:
+    RABBITMQ_HOST: "172.31.35.34"
+    RABBITMQ_PORT: "5672"
+    RABBITMQ_USER: "testuser"
+    RABBITMQ_PASSWORD: "testuserpw"
+    RABBITMQ_PREFETCH_COUNT: "5"
+    MONGO_URI: "mongodb://testuser:testuserpw@172.31.35.34:27017/tacticai?authSource=admin"
+    MONGO_DB_NAME: "tacticai"
