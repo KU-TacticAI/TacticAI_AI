@@ -81,3 +81,7 @@ volumes:
   mongodb_data:
   mysql_data:
   redis_data: # Redis 데이터 볼륨 추가
+
+networks:
+  default:
+    name: tacticai-network
