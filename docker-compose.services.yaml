@@ -9,7 +9,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # [수정] .env 없이 직접 입력
+      # .env 없이 직접 입력
       REDIS_HOST: tacticai-redis
       REDIS_PORT: 6379
       RABBITMQ_HOST: tacticai-rabbitmq
@@ -29,7 +29,7 @@ services:
     ports:
       - "8002:8002"
     environment:
-      # [수정] .env 없이 직접 입력
+      # .env 없이 직접 입력
       REDIS_HOST: tacticai-redis
       REDIS_PORT: 6379
       RABBITMQ_HOST: tacticai-rabbitmq
@@ -56,11 +56,23 @@ services:
     ports:
       - "8001:8001"
     environment:
-      # [수정] .env 없이 직접 입력
+      # .env 없이 직접 입력
       REDIS_HOST: tacticai-redis
       REDIS_PORT: 6379
       RABBITMQ_HOST: tacticai-rabbitmq
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: testuser
       RABBITMQ_PASSWORD: testuserpw
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
     restart: unless-stopped
+
+networks:
+  default:
+    name: tacticai-network
+    external: true
