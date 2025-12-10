@@ -1,3 +1,5 @@
+# 게임 서버용 requirements.txt
+
 python-dotenv
 aio-pika>=8.0.0
 motor>=3.7.1
@@ -9,3 +11,4 @@ pytest-asyncio>=0.20
 numpy>=1.24
 pymongo>=4.10.0
 mysql-connector-python>=8.0.0
+redis>=5.0.0
