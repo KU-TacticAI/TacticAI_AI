@@ -179,7 +179,7 @@ class Config:
         """MongoDB 연결 URL 반환"""
         if self.MONGO_USER and self.MONGO_PASSWORD:
             return (
-                f"mongodb://{self.MONGO_USER}:{self.MONGO_PASSWORD}" 
+                f"mongodb://{self.MONGO_USER}:{self.MONGO_PASSWORD}"
                 f"@{self.MONGO_HOST}:{self.MONGO_PORT}/{self.MONGO_DB_NAME}?authSource=admin"
             )
         else:

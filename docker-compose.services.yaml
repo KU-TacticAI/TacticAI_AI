@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  mq-api-gateway:
+    build:
+      context: ./mq_api_gateway
+      dockerfile: Dockerfile
+    container_name: tacticai-mq-api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      # [수정] .env 없이 직접 입력
+      REDIS_HOST: tacticai-redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: tacticai-rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: testuser
+      RABBITMQ_PASSWORD: testuserpw
+      MONGO_URI: mongodb://testuser:testuserpw@tacticai-mongodb:27017/tacticai?authSource=admin
+      MONGO_DB_NAME: tacticai
+      ADMIN_TOKEN: admin_secret_token_12345
+    restart: unless-stopped
+
+  game-server:
+    build:
+      context: ./game_server
+      dockerfile: Dockerfile
+    container_name: tacticai-game-server
+    ports:
+      - "8002:8002"
+    environment:
+      # [수정] .env 없이 직접 입력
+      REDIS_HOST: tacticai-redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: tacticai-rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: testuser
+      RABBITMQ_PASSWORD: testuserpw
+      MONGO_HOST: tacticai-mongodb
+      MONGO_PORT: 27017
+      MONGO_USER: testuser
+      MONGO_PASSWORD: testuserpw
+      MONGO_DB_NAME: tacticai
+      MYSQL_HOST: tacticai-mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: tacticai
+      MYSQL_PASSWORD: tacticaipw
+      MYSQL_DATABASE: tacticai
+    restart: unless-stopped
+
+  ai-server:
+    build:
+      context: ./ai_server
+      dockerfile: Dockerfile
+    container_name: tacticai-ai-server
+    ports:
+      - "8001:8001"
+    environment:
+      # [수정] .env 없이 직접 입력
+      REDIS_HOST: tacticai-redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: tacticai-rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: testuser
+      RABBITMQ_PASSWORD: testuserpw
+    restart: unless-stopped
