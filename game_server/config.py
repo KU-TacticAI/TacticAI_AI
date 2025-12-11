@@ -68,6 +68,10 @@ class Config:
         self.LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
         self.DEBUG = self._get_bool('DEBUG', False)
         
+        # 매트릭 API 설정
+        self.METRICS_API_HOST = os.getenv('METRICS_API_HOST', '0.0.0.0')
+        self.METRICS_API_PORT = self._get_int('METRICS_API_PORT', 8080)
+        
 
         
         # 큐 및 Exchange 이름 설정
