@@ -1,10 +1,10 @@
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Dict, Deque, List
+from typing import Dict, Deque, List, Optional
 from collections import deque
 from message_schemas import (
     GameRequest, GameProgress,  # RabbitMQ용
@@ -14,7 +14,9 @@ from config import Config
 from rabbitmq_client import get_rabbitmq_client, close_rabbitmq_client
 import uuid
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
+import time
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,15 @@ app = FastAPI(title="MQ API Gateway", description="게임 서버와 RabbitMQ 간
 
 # 앱 시작 시간 (헬스체크용)
 START_TIME = None
+
+# 최근 게임 요청 타임스탬프 저장 (최근 10초간 요청 추적용)
+GAME_REQUEST_TIMESTAMPS: Deque[float] = deque()
+
+# 현재 활성 사용자 수 추적 (game_id 기반)
+ACTIVE_GAMES: Dict[str, float] = {}  # game_id -> 마지막 요청 시간
+
+# Admin 토큰 (Config에서 가져오거나 환경변수 사용)
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "admin_secret_token")
 
 # ✅ CORS 미들웨어 추가
 app.add_middleware(
@@ -60,11 +71,88 @@ def health_check():
         "timestamp": now.isoformat(),
         "uptime": uptime,
     }
+
+
+def _cleanup_old_timestamps():
+    """10초보다 오래된 타임스탬프 제거"""
+    current_time = time.time()
+    while GAME_REQUEST_TIMESTAMPS and (current_time - GAME_REQUEST_TIMESTAMPS[0]) > 10:
+        GAME_REQUEST_TIMESTAMPS.popleft()
+
+
+def _cleanup_inactive_games():
+    """60초 이상 활동이 없는 게임 제거"""
+    current_time = time.time()
+    inactive_games = [game_id for game_id, last_time in ACTIVE_GAMES.items() 
+                      if (current_time - last_time) > 60]
+    for game_id in inactive_games:
+        del ACTIVE_GAMES[game_id]
+
+
+def _get_system_status(request_count: int) -> str:
+    """요청 수에 따라 시스템 상태 결정"""
+    if request_count < 500:
+        return "STABLE"
+    elif request_count < 1000:
+        return "WARN"
+    else:
+        return "CRITICAL"
+
+
+@app.get("/metric/realtime")
+def get_realtime_metrics(authorization: Optional[str] = Header(None)):
+    """
+    실시간 사용자 수 (게임요청 최근 10초)
+    Header: Authorization: Bearer {admin_token}
+    """
+    # # 토큰 검증
+    # if not authorization:
+    #     raise HTTPException(status_code=401, detail="Authorization header required")
+    
+    # parts = authorization.split(" ")
+    # if len(parts) != 2 or parts[0].lower() != "bearer":
+    #     raise HTTPException(status_code=401, detail="Invalid authorization format")
+    
+    # token = parts[1]
+    # if token != ADMIN_TOKEN:
+    #     raise HTTPException(status_code=403, detail="Invalid admin token")
+    
+    # 오래된 타임스탬프 정리
+    _cleanup_old_timestamps()
+    _cleanup_inactive_games()
+    
+    # 메트릭 계산
+    total_requests_last_10s = len(GAME_REQUEST_TIMESTAMPS)
+    active_user_count = len(ACTIVE_GAMES)
+    
+    # CPU 사용률 가져오기 (선택)
+    try:
+        gateway_cpu_usage = psutil.cpu_percent(interval=0.1)
+    except Exception:
+        gateway_cpu_usage = 0.0
+    
+    system_status = _get_system_status(total_requests_last_10s)
+    
+    return {
+        "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"),
+        "systemStatus": system_status,
+        "metrics": {
+            "activeUserCount": active_user_count,
+            "totalRequestsLast10s": total_requests_last_10s,
+            "gatewayCpuUsage": round(gateway_cpu_usage, 1)
+        }
+    }
+
+
 @app.post("/game-request", response_model=GameRequestResponse)
 @app.post("/ai/game-request", response_model=GameRequestResponse)
 def create_game_request(request: GameRequestCreate):
     """게임 요청을 RabbitMQ로 전송"""
     try:
+        # 메트릭 추적: 요청 타임스탬프 기록
+        current_time = time.time()
+        GAME_REQUEST_TIMESTAMPS.append(current_time)
+        ACTIVE_GAMES[request.game_id] = current_time
         # 1. FastAPI 요청을 RabbitMQ 메시지로 변환
         rabbitmq_request = GameRequest(
             request_id=str(uuid.uuid4()),

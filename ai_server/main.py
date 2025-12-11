@@ -12,9 +12,15 @@ import signal
 import sys
 import time
 import logging
+import threading
 from datetime import datetime
-from typing import Dict, Set, Optional
+from typing import Dict, Set, Optional, List
+from collections import deque
 import uuid
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+import uvicorn
 
 from config import Config
 from rabbitmq_client import RabbitMQClient
@@ -25,8 +31,101 @@ from message_schemas import (
 )
 
 
+# ============================================================
+# FastAPI 매트릭 API 정의
+# ============================================================
+
+metrics_app = FastAPI(title="AI Server Metrics API", version="1.0.0")
+
+# AIServer 인스턴스를 저장할 전역 변수
+_ai_server: Optional['AIServer'] = None
+
+
+class PodStats(BaseModel):
+    """Pod별 통계"""
+    podId: str
+    inferenceTime: float  # 초 단위
+    status: str  # HEALTHY, BUSY, CRITICAL
+
+
+class AIPerformanceResponse(BaseModel):
+    """AI 성능 매트릭 응답 스키마"""
+    timestamp: str
+    averageInferenceTime: float  # 전체 평균 (초 단위)
+    pods: List[PodStats]
+
+
+def get_status_by_inference_time(inference_time: float) -> str:
+    """추론 시간에 따라 상태 판단
+    
+    기준:
+    - HEALTHY: inferenceTime < 0.5초
+    - BUSY: 0.5초 <= inferenceTime < 1.0초
+    - CRITICAL: inferenceTime >= 1.0초
+    """
+    if inference_time < 0.5:
+        return "HEALTHY"
+    elif inference_time < 1.0:
+        return "BUSY"
+    else:
+        return "CRITICAL"
+
+
+@metrics_app.get("/metric/realtime/ai-performance", response_model=AIPerformanceResponse)
+async def get_ai_performance():
+    """AI 서버별 실시간 성능 매트릭 조회"""
+    global _ai_server
+    
+    timestamp = datetime.now().isoformat(timespec='seconds')
+    
+    if _ai_server is None:
+        return AIPerformanceResponse(
+            timestamp=timestamp,
+            averageInferenceTime=0.0,
+            pods=[]
+        )
+    
+    # 최근 추론 시간들의 평균 계산
+    inference_times = list(_ai_server.recent_inference_times)
+    if inference_times:
+        avg_inference_time = sum(inference_times) / len(inference_times)
+    else:
+        avg_inference_time = 0.0
+    
+    # 현재 Pod 정보
+    pod_stats = PodStats(
+        podId=_ai_server.server_id,
+        inferenceTime=round(avg_inference_time, 3),
+        status=get_status_by_inference_time(avg_inference_time)
+    )
+    
+    return AIPerformanceResponse(
+        timestamp=timestamp,
+        averageInferenceTime=round(avg_inference_time, 3),
+        pods=[pod_stats]
+    )
+
+
+@metrics_app.get("/health")
+async def health_check():
+    """헬스 체크 엔드포인트"""
+    return {"status": "ok"}
+
+
+def run_metrics_server(host: str, port: int):
+    """FastAPI 서버를 별도 쓰레드에서 실행"""
+    uvicorn.run(metrics_app, host=host, port=port, log_level="info")
+
+
+# ============================================================
+# AI 서버 클래스
+# ============================================================
+
 class AIServer:
     """AI 서버 클래스"""
+    
+    # 최근 추론 시간을 저장할 최대 개수
+    MAX_INFERENCE_HISTORY = 100
     
     def __init__(self):
         """AI 서버 초기화"""
@@ -41,6 +140,9 @@ class AIServer:
         self.is_running = False
         self.loaded_models: Set[str] = set()
         self.processing_requests: Set[str] = set()
+        
+        # 추론 시간 추적 (최근 N개의 추론 시간을 초 단위로 저장)
+        self.recent_inference_times: deque = deque(maxlen=self.MAX_INFERENCE_HISTORY)
         
         # 시그널 핸들러 설정
         self._setup_signal_handlers()
@@ -71,7 +173,22 @@ class AIServer:
         
     def start(self):
         """서버 시작"""
+        global _ai_server
+        _ai_server = self
+        
         self.logger.info("Starting AI Server...")
+        
+        # 매트릭 API 서버 시작 (별도 쓰레드)
+        metrics_host = getattr(Config, 'METRICS_API_HOST', '0.0.0.0')
+        metrics_port = getattr(Config, 'METRICS_API_PORT', 8080)
+        metrics_thread = threading.Thread(
+            target=run_metrics_server,
+            args=(metrics_host, metrics_port),
+            daemon=True
+        )
+        metrics_thread.start()
+        self.logger.info(f"매트릭 API 서버 시작: http://{metrics_host}:{metrics_port}")
+        
         connected = self.rabbitmq_client.connect()
         if not connected:
             self.logger.warning("Initial RabbitMQ connect failed - will continue and let reconnect loop handle it")
@@ -137,6 +254,10 @@ class AIServer:
         
         # 추론 시간 계산 (밀리초)
         inference_time_ms = int((time.time() - start_time) * 1000)
+        
+        # 추론 시간 기록 (초 단위로 변환하여 저장)
+        inference_time_sec = inference_time_ms / 1000.0
+        self.recent_inference_times.append(inference_time_sec)
         
         # 응답에 추론 시간과 AI 서버 ID 추가
         response.response_time_ms = inference_time_ms
@@ -230,3 +351,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
