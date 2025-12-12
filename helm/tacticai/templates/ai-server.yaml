@@ -35,7 +35,7 @@ spec:
         {{- end }}
         resources:
           limits:
-            nvidia.com/gpu: {{ .Values.aiServer.resources.limits | dig "nvidia.com/gpu" 1 }}
+            nvidia.com/gpu.shared: {{ .Values.aiServer.resources.limits | dig "nvidia.com/gpu" 1 }}
 ---
 apiVersion: v1
 kind: Service
