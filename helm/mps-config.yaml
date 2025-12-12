@@ -4,10 +4,13 @@ metadata:
   name: mps-config-map
   namespace: gpu-operator
 data:
-  config.yaml: |-
+  any: |-
     version: v1
+    flags:
+      migStrategy: none
     sharing:
       mps:
+        renameByDefault: true
         resources:
-          - name: nvidia.com/gpu
-            replicas: 4
+        - name: nvidia.com/gpu
+          replicas: 5
