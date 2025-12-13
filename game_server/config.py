@@ -70,7 +70,7 @@ class Config:
         
         # 매트릭 API 설정
         self.METRICS_API_HOST = os.getenv('METRICS_API_HOST', '0.0.0.0')
-        self.METRICS_API_PORT = self._get_int('METRICS_API_PORT', 8080)
+        self.METRICS_API_PORT = self._get_int('METRICS_API_PORT', 8002)
         
 
         

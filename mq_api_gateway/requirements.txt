@@ -21,3 +21,5 @@ httpx==0.25.2
 
 # 로깅 및 유틸리티
 python-multipart==0.0.6
+
+psutil

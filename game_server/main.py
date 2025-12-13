@@ -131,7 +131,7 @@ async def main():
 
     # 2. 매트릭 API 서버 시작 (별도 쓰레드)
     metrics_host = getattr(config, 'METRICS_API_HOST', '0.0.0.0')
-    metrics_port = getattr(config, 'METRICS_API_PORT', 8080)
+    metrics_port = getattr(config, 'METRICS_API_PORT', 8002)
     metrics_thread = threading.Thread(
         target=run_metrics_server,
         args=(metrics_host, metrics_port),

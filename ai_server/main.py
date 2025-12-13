@@ -180,7 +180,7 @@ class AIServer:
         
         # 매트릭 API 서버 시작 (별도 쓰레드)
         metrics_host = getattr(Config, 'METRICS_API_HOST', '0.0.0.0')
-        metrics_port = getattr(Config, 'METRICS_API_PORT', 8080)
+        metrics_port = getattr(Config, 'METRICS_API_PORT', 8001)
         metrics_thread = threading.Thread(
             target=run_metrics_server,
             args=(metrics_host, metrics_port),
