@@ -63,13 +63,13 @@ services:
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: testuser
       RABBITMQ_PASSWORD: testuserpw
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [ gpu ]
+    # deploy:
+      # resources:
+        # reservations:
+          # devices:
+          #   - driver: nvidia
+          #     count: 1
+          #     capabilities: [ gpu ]
     restart: unless-stopped
 
 networks:

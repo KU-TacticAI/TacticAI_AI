@@ -50,3 +50,7 @@ class Config:
         import torch
         DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     
+    # 매트릭 API 설정
+    METRICS_API_HOST = os.getenv("METRICS_API_HOST", "0.0.0.0")
+    METRICS_API_PORT = int(os.getenv("METRICS_API_PORT", 8001))
+

@@ -9,8 +9,8 @@ pytest>=7.0
 pytest-asyncio>=0.20
 numpy
 requests
-redis>=5.0.0
-
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
 # PyTorch는 베이스 이미지에 포함됨
 torch==2.5.1
 torchvision==0.20.1
