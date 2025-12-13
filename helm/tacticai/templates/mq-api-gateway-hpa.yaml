@@ -1,0 +1,23 @@
+{{- if .Values.mqApiGateway.enabled }}
+{{- if .Values.mqApiGateway.hpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mq-api-gateway
+  namespace: {{ .Values.namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mq-api-gateway
+  minReplicas: {{ .Values.mqApiGateway.hpa.minReplicas }}
+  maxReplicas: {{ .Values.mqApiGateway.hpa.maxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.mqApiGateway.hpa.targetCPUUtilization }}
+{{- end }}
+{{- end }}
