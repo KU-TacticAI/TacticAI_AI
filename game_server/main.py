@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+게임 서버 메인 모듈 - Redis 메트릭 자동 보고
+"""
+
 import asyncio
 import logging
 import threading
@@ -163,12 +169,13 @@ async def main():
     # 4. RabbitMQ 연결 (무한 재시도)
     rabbitmq = RabbitMQClient(config, config.SERVER_ID)
     while True:
-        connected = await rabbitmq.connect()
-        if connected:
-            break
-        logger.error("RabbitMQ 연결 실패. 5초 후 재시도합니다.")
-        await asyncio.sleep(5)
-    await rabbitmq.setup_topology()
+      connected = await self.rabbitmq.connect()
+      if connected:
+        break
+      logger.error("RabbitMQ 연결 실패. 5초 후 재시도")
+      await asyncio.sleep(5)
+
+    await self.rabbitmq.setup_topology()
 
     # 5. GameManager 생성 및 전역 변수에 저장 (매트릭 API에서 사용)
     manager = GameManager(rabbitmq)
@@ -176,20 +183,25 @@ async def main():
 
     # 6. 콜백 등록
     callbacks = {
-        "game_request": manager.handle_game_request,
-        "inference_response": manager.handle_inference_response,
-        "model_load_response": manager.handle_model_load_response,
+      "game_request": self.manager.handle_game_request,
+      "inference_response": self.manager.handle_inference_response,
+      "model_load_response": self.manager.handle_model_load_response,
     }
-    await rabbitmq.start_consuming(callbacks)
+    await self.rabbitmq.start_consuming(callbacks)
 
     # 7. graceful shutdown 처리
     try:
-        while True:
-            await asyncio.sleep(3600)
+      while True:
+        await asyncio.sleep(3600)
     except (KeyboardInterrupt, asyncio.CancelledError):
-        logger.info("서버 종료 신호 수신. 연결 해제 중...")
-        await rabbitmq.disconnect()
-        logger.info("서버 정상 종료.")
+      logger.info("서버 종료 신호 수신")
+
+  except Exception as e:
+    logger.exception(f"Fatal error: {e}")
+  finally:
+    await server.shutdown()
+    logger.info("서버 정상 종료")
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+  asyncio.run(main())

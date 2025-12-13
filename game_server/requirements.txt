@@ -1,3 +1,5 @@
+# 게임 서버용 requirements.txt
+
 python-dotenv
 aio-pika>=8.0.0
 motor>=3.7.1

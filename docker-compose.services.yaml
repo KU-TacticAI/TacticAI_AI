@@ -9,12 +9,16 @@ services:
     ports:
       - "8000:8000"
     environment:
+      # .env 없이 직접 입력
+      REDIS_HOST: tacticai-redis
+      REDIS_PORT: 6379
       RABBITMQ_HOST: tacticai-rabbitmq
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: testuser
       RABBITMQ_PASSWORD: testuserpw
       MONGO_URI: mongodb://testuser:testuserpw@tacticai-mongodb:27017/tacticai?authSource=admin
       MONGO_DB_NAME: tacticai
+      ADMIN_TOKEN: admin_secret_token_12345
     restart: unless-stopped
 
   game-server:
@@ -25,6 +29,9 @@ services:
     ports:
       - "8002:8002"
     environment:
+      # .env 없이 직접 입력
+      REDIS_HOST: tacticai-redis
+      REDIS_PORT: 6379
       RABBITMQ_HOST: tacticai-rabbitmq
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: testuser
@@ -49,6 +56,9 @@ services:
     ports:
       - "8001:8001"
     environment:
+      # .env 없이 직접 입력
+      REDIS_HOST: tacticai-redis
+      REDIS_PORT: 6379
       RABBITMQ_HOST: tacticai-rabbitmq
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: testuser
