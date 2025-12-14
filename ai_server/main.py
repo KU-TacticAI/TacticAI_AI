@@ -19,6 +19,7 @@ from collections import deque
 import uuid
 
 from fastapi import FastAPI
+from fastapi.responses import Response
 from pydantic import BaseModel
 import uvicorn
 
@@ -71,38 +72,55 @@ def get_status_by_inference_time(inference_time: float) -> str:
         return "CRITICAL"
 
 
-@metrics_app.get("/metric/realtime/ai-performance", response_model=AIPerformanceResponse)
+@metrics_app.get("/metric/realtime/ai-performance")
 async def get_ai_performance():
-    """AI 서버별 실시간 성능 매트릭 조회"""
+    """AI 서버별 실시간 성능 매트릭 조회 (Prometheus 형식)"""
     global _ai_server
     
-    timestamp = datetime.now().isoformat(timespec='seconds')
+    output = []
     
-    if _ai_server is None:
-        return AIPerformanceResponse(
-            timestamp=timestamp,
-            averageInferenceTime=0.0,
-            pods=[]
-        )
+    # 기본값 설정
+    avg_inference_time = 0.0
+    total_inferences = 0
+    server_id = "unknown"
+    status = "HEALTHY"
     
-    # 최근 추론 시간들의 평균 계산
-    inference_times = list(_ai_server.recent_inference_times)
-    if inference_times:
-        avg_inference_time = sum(inference_times) / len(inference_times)
-    else:
-        avg_inference_time = 0.0
+    if _ai_server is not None:
+        server_id = _ai_server.server_id
+        inference_times = list(_ai_server.recent_inference_times)
+        total_inferences = len(inference_times)
+        
+        if inference_times:
+            avg_inference_time = sum(inference_times) / len(inference_times)
+        
+        status = get_status_by_inference_time(avg_inference_time)
     
-    # 현재 Pod 정보
-    pod_stats = PodStats(
-        podId=_ai_server.server_id,
-        inferenceTime=round(avg_inference_time, 3),
-        status=get_status_by_inference_time(avg_inference_time)
-    )
+    # ===== Prometheus 메트릭 출력 =====
     
-    return AIPerformanceResponse(
-        timestamp=timestamp,
-        averageInferenceTime=round(avg_inference_time, 3),
-        pods=[pod_stats]
+    # averageInferenceTime (Gauge)
+    output.append("# HELP ai_server_average_inference_time Average inference time in seconds.")
+    output.append("# TYPE ai_server_average_inference_time gauge")
+    output.append(f"ai_server_average_inference_time {avg_inference_time:.4f}")
+    
+    # Pod별 inferenceTime (Gauge)
+    output.append("")
+    output.append("# HELP ai_server_pod_inference_time Inference time per pod in seconds.")
+    output.append("# TYPE ai_server_pod_inference_time gauge")
+    output.append(f'ai_server_pod_inference_time{{pod_id="{server_id}"}} {avg_inference_time:.4f}')
+    
+    # Pod별 status (Gauge - HEALTHY=0, BUSY=1, CRITICAL=2)
+    output.append("")
+    output.append("# HELP ai_server_pod_status Pod status (0=HEALTHY, 1=BUSY, 2=CRITICAL).")
+    output.append("# TYPE ai_server_pod_status gauge")
+    status_map = {"HEALTHY": 0, "BUSY": 1, "CRITICAL": 2}
+    status_value = status_map.get(status, 0)
+    output.append(f'ai_server_pod_status{{pod_id="{server_id}",status="{status}"}} {status_value}')
+    
+    response_content = "\n".join(output) + "\n"
+    
+    return Response(
+        content=response_content,
+        media_type="text/plain; version=0.0.4; charset=utf-8"
     )
 
 

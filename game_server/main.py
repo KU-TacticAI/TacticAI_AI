@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+게임 서버 메인 모듈 -  메트릭 자동 보고
+"""
+
 import asyncio
 import logging
 import threading
@@ -6,6 +12,7 @@ from typing import Dict, List, Optional
 from collections import defaultdict
 
 from fastapi import FastAPI
+from fastapi.responses import Response
 from pydantic import BaseModel
 import uvicorn
 
@@ -56,52 +63,78 @@ def get_status_by_active_rooms(active_rooms: int) -> str:
         return "CRITICAL"
 
 
-@app.get("/metric/realtime/game-stats", response_model=MetricsResponse)
+@app.get("/metric/realtime/game-stats")
 async def get_game_stats():
-    """게임별 실시간 매트릭 조회"""
+    """게임별 실시간 매트릭 조회 (Prometheus 형식)"""
     global _game_manager
     
-    timestamp = datetime.now().isoformat(timespec='seconds')
+    output = []
     
-    if _game_manager is None:
-        return MetricsResponse(
-            timestamp=timestamp,
-            totalActiveMatches=0,
-            games=[]
-        )
+    # 지원하는 모든 게임 타입 (기본값 설정)
+    all_game_types = ["CHESS", "GOMOKU", "OTHELLO", "TICTACTOE"]
+    game_stats: Dict[str, Dict] = {
+        gt: {"activeRooms": 0, "waitingUsers": 0, "status": "HEALTHY"}
+        for gt in all_game_types
+    }
     
-    # 게임 타입별 활성 방 수 집계
-    game_type_counts: Dict[str, int] = defaultdict(int)
+    total_active_matches = 0
     
-    for game_id, meta in _game_manager.game_meta.items():
-        game_type = meta.get("game_type")
-        if game_type is not None:
-            # GameType enum을 문자열로 변환
-            if hasattr(game_type, 'name'):
-                type_name = game_type.name
-            else:
-                type_name = str(game_type)
-            game_type_counts[type_name] += 1
+    if _game_manager is not None:
+        total_active_matches = len(_game_manager.games)
+        
+        # 게임 타입별 활성 방 수 집계
+        for game_id, meta in _game_manager.game_meta.items():
+            game_type = meta.get("game_type")
+            if game_type is not None:
+                if hasattr(game_type, 'name'):
+                    type_name = game_type.name
+                else:
+                    type_name = str(game_type)
+                
+                if type_name in game_stats:
+                    game_stats[type_name]["activeRooms"] += 1
+                    # 상태 판단
+                    rooms = game_stats[type_name]["activeRooms"]
+                    if rooms >= 300:
+                        game_stats[type_name]["status"] = "CRITICAL"
+                    elif rooms >= 100:
+                        game_stats[type_name]["status"] = "BUSY"
     
-    # 전체 활성 매치 수
-    total_active_matches = len(_game_manager.games)
+    # ===== Prometheus 메트릭 출력 =====
     
-    # 게임 타입별 통계 생성
-    games_stats: List[GameStats] = []
+    # total_active_matches (Gauge)
+    output.append("# HELP game_server_total_active_matches Total number of active game matches.")
+    output.append("# TYPE game_server_total_active_matches gauge")
+    output.append(f"game_server_total_active_matches {total_active_matches}")
     
-    # 지원하는 모든 게임 타입 (활성 게임이 있는 것만)
-    for game_type_name, active_rooms in game_type_counts.items():
-        games_stats.append(GameStats(
-            type=game_type_name,
-            activeRooms=active_rooms,
-            waitingUsers=0,  # 매칭 대기 시스템 없음
-            status=get_status_by_active_rooms(active_rooms)
-        ))
+    # 게임 타입별 activeRooms (Gauge)
+    output.append("")
+    output.append("# HELP game_server_active_rooms Number of active rooms by game type.")
+    output.append("# TYPE game_server_active_rooms gauge")
+    for game_type, stats in game_stats.items():
+        output.append(f'game_server_active_rooms{{game_type="{game_type}"}} {stats["activeRooms"]}')
     
-    return MetricsResponse(
-        timestamp=timestamp,
-        totalActiveMatches=total_active_matches,
-        games=games_stats
+    # 게임 타입별 waitingUsers (Gauge)
+    output.append("")
+    output.append("# HELP game_server_waiting_users Number of waiting users by game type.")
+    output.append("# TYPE game_server_waiting_users gauge")
+    for game_type, stats in game_stats.items():
+        output.append(f'game_server_waiting_users{{game_type="{game_type}"}} {stats["waitingUsers"]}')
+    
+    # 게임 타입별 status (Gauge)
+    output.append("")
+    output.append("# HELP game_server_status Game server status by type (0=HEALTHY, 1=BUSY, 2=CRITICAL).")
+    output.append("# TYPE game_server_status gauge")
+    status_map = {"HEALTHY": 0, "BUSY": 1, "CRITICAL": 2}
+    for game_type, stats in game_stats.items():
+        status_value = status_map.get(stats["status"], 0)
+        output.append(f'game_server_status{{game_type="{game_type}",status="{stats["status"]}"}} {status_value}')
+    
+    response_content = "\n".join(output) + "\n"
+    
+    return Response(
+        content=response_content,
+        media_type="text/plain; version=0.0.4; charset=utf-8"
     )
 
 
@@ -131,7 +164,7 @@ async def main():
 
     # 2. 매트릭 API 서버 시작 (별도 쓰레드)
     metrics_host = getattr(config, 'METRICS_API_HOST', '0.0.0.0')
-    metrics_port = getattr(config, 'METRICS_API_PORT', 8080)
+    metrics_port = getattr(config, 'METRICS_API_PORT', 8002)
     metrics_thread = threading.Thread(
         target=run_metrics_server,
         args=(metrics_host, metrics_port),
@@ -166,8 +199,9 @@ async def main():
         connected = await rabbitmq.connect()
         if connected:
             break
-        logger.error("RabbitMQ 연결 실패. 5초 후 재시도합니다.")
+        logger.error("RabbitMQ 연결 실패. 5초 후 재시도")
         await asyncio.sleep(5)
+
     await rabbitmq.setup_topology()
 
     # 5. GameManager 생성 및 전역 변수에 저장 (매트릭 API에서 사용)
@@ -190,6 +224,7 @@ async def main():
         logger.info("서버 종료 신호 수신. 연결 해제 중...")
         await rabbitmq.disconnect()
         logger.info("서버 정상 종료.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
