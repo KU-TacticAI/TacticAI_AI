@@ -228,23 +228,3 @@ DEVICE=cuda  # or cpu
 # K6 설치 후 실행
 k6 run test/full-game-scenario.js
 ```
-
-## 📄 문서
-
-- [최종 보고서](docs/2025%20NGDS%20%20프로젝트%20최종보고서.md)
-- [SW 설계 문서](docs/SW_Design.md)
-
-## 👥 팀원
-
-| 이름 | 역할 |
-|------|------|
-| 이경민 | 게임서버, AI서버, K8s 배포 |
-| 이서준 | 클라이언트, MQ 게이트웨이 |
-| 이호철 | Prometheus, Grafana |
-| 이윤호 | K6 테스트 스크립트 |
-
-## 📚 참고문헌
-
-- [INFaaS: A Model-less and Managed Inference Serving System](https://www.usenix.org/system/files/atc21-romero.pdf) (Stanford, USENIX ATC 2019)
-- [Kubernetes Documentation](https://kubernetes.io/docs/)
-- [RabbitMQ Documentation](https://www.rabbitmq.com/docs)
