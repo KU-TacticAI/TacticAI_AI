@@ -1,0 +1,244 @@
+/* Omok styles aligned to other games' UI (Othello/Chess/TicTacToe) */
+.omok-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 15px 20px;
+  font-family: 'Arial', sans-serif;
+  /* match other games' background */
+  background: linear-gradient(135deg, #2c3e50, #34495e);
+  min-height: auto;
+  color: white;
+}
+
+.omok-game-info {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.omok-game-info h2 {
+  color: #ecf0f1;
+  margin-bottom: 8px;
+  font-size: 1.8rem;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+.omok-turn-info {
+  text-align: center;
+}
+
+.omok-turn-info p {
+  margin: 0;
+  font-size: 1rem;
+  color: #dfe6ea;
+}
+
+/* Board + scores layout (same as other games) */
+.omok-game-board-container {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-end !important;
+  justify-content: space-between !important;
+  gap: 20px !important;
+  position: relative;
+  width: 100% !important;
+  max-width: 1200px !important;
+  margin: 15px auto 0 auto !important;
+}
+
+/* Left / Right player score outer card (like Othello) */
+.omok-left-player-score,
+.omok-right-player-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 25px;
+  border-radius: 15px;
+  backdrop-filter: blur(10px);
+  min-width: 180px;
+  height: auto;
+  flex-shrink: 0;
+}
+
+/* inner player small card (layered) */
+.omok-left-player-score .omok-player,
+.omok-right-player-score .omok-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  width: 120px;
+  height: 120px;
+  padding: 12px 8px;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.omok-player-name {
+  font-weight: bold;
+  font-size: 1.1rem;
+  color: #ecf0f1;
+}
+
+.omok-piece-display {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+
+.omok-score {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #f39c12;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+/* Board + coordinates container */
+.omok-board-with-coordinates {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+/* Row coordinates (left) */
+.omok-row-coordinates {
+  position: absolute;
+  left: -46px; /* align closer to board */
+  top: 18px;   /* align with board padding */
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 10;
+}
+
+.omok-row-coordinate {
+  width: 30px;
+  height: 30px; /* match cell height */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ecf0f1;
+  font-weight: bold;
+  font-size: 0.95rem;
+  line-height: 30px;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+/* Column coordinates (bottom) */
+.omok-col-coordinates {
+  display: flex;
+  gap: 2px;
+  margin-top: 5px;
+  margin-left: 10px;
+}
+
+.omok-col-coordinate {
+  width: 30px;
+  height: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ecf0f1;
+  font-weight: bold;
+  font-size: 1rem;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+/* Board styling (preserve wooden look) */
+.omok-board {
+  display: grid;
+  grid-template-columns: repeat(15, 30px);
+  grid-template-rows: repeat(15, 30px);
+  gap: 2px;
+  background: #d2995e;
+  padding: 12px;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+
+.omok-cell {
+  width: 30px;
+  height: 30px;
+  background: #f2d8b3;
+  border: 1px solid #caa77a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.omok-cell::after {
+  content: '';
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: #a67c52;
+  border-radius: 50%;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.2);
+}
+
+.omok-cell.black-stone::before,
+.omok-cell.white-stone::before {
+  content: '';
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  z-index: 2;
+}
+
+.omok-cell.black-stone::before {
+  background: radial-gradient(circle at 30% 30%, #444 0%, #000 70%);
+}
+
+.omok-cell.white-stone::before {
+  background: radial-gradient(circle at 30% 30%, #fff 0%, #ddd 60%);
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.omok-cell.last-move {
+  box-shadow: 0 0 0 3px rgba(243,156,18,0.35) inset;
+}
+
+.omok-cell.winning-cell {
+  outline: 3px solid rgba(38, 166, 154, 0.8);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .omok-game-board-container {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 12px !important;
+  }
+  .omok-left-player-score,
+  .omok-right-player-score {
+    min-width: 100px;
+    padding: 10px;
+  }
+  .omok-board {
+    grid-template-columns: repeat(15, 20px);
+    grid-template-rows: repeat(15, 20px);
+  }
+  .omok-cell, .omok-row-coordinate {
+    width: 20px;
+    height: 20px;
+  }
+  .omok-row-coordinates { left: -55px; }
+  .omok-col-coordinate { width: 20px; height: 18px; }
+}

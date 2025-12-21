@@ -1,0 +1,154 @@
+/* 게임 컨테이너 공통 스타일 */
+.game-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 15px 20px;
+  font-family: 'Arial', sans-serif;
+  background: linear-gradient(135deg, #2c3e50, #34495e);
+  min-height: auto;
+  color: white;
+}
+
+/* 게임 보드와 점수 레이아웃 */
+.othello-game-board-container,
+.tictactoe-game-board-container,
+.chess-game-board-container {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  position: relative;
+  width: 100%;
+  max-width: 1200px;
+  margin: 15px auto 0 auto;
+}
+
+/* 보드만의 컨테이너 */
+.othello-board-with-coordinates,
+.tictactoe-board-with-coordinates,
+.chess-board-with-coordinates {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  position: relative;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+/* 왼쪽/오른쪽 플레이어 점수 영역 */
+.othello-left-player-score,
+.othello-right-player-score,
+.tictactoe-left-player-score,
+.tictactoe-right-player-score,
+.chess-left-player-score,
+.chess-right-player-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 25px;
+  border-radius: 15px;
+  backdrop-filter: blur(10px);
+  min-width: 180px;
+  height: auto;
+  flex-shrink: 0;
+}
+
+/* 플레이어 정보 스타일 */
+.othello-left-player-score .othello-player,
+.othello-right-player-score .othello-player,
+.tictactoe-left-player-score .tictactoe-player,
+.tictactoe-right-player-score .tictactoe-player,
+.chess-left-player-score .chess-player,
+.chess-right-player-score .chess-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 15px;
+  border-radius: 10px;
+  text-align: center;
+}
+
+/* 플레이어 이름 스타일 */
+.othello-left-player-score .othello-player-name,
+.othello-right-player-score .othello-player-name,
+.tictactoe-left-player-score .tictactoe-player-name,
+.tictactoe-right-player-score .tictactoe-player-name,
+.chess-left-player-score .chess-player-name,
+.chess-right-player-score .chess-player-name {
+  font-weight: bold;
+  font-size: 1.1rem;
+  margin-bottom: 5px;
+}
+
+/* 점수 스타일 */
+.othello-left-player-score .othello-score,
+.othello-right-player-score .othello-score,
+.tictactoe-left-player-score .tictactoe-score,
+.tictactoe-right-player-score .tictactoe-score,
+.chess-left-player-score .chess-score,
+.chess-right-player-score .chess-score {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #f39c12;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+/* 반응형 디자인 */
+@media (max-width: 1024px) {
+  .othello-game-board-container,
+  .tictactoe-game-board-container,
+  .chess-game-board-container {
+    gap: 20px;
+  }
+  
+  .othello-left-player-score,
+  .othello-right-player-score,
+  .tictactoe-left-player-score,
+  .tictactoe-right-player-score,
+  .chess-left-player-score,
+  .chess-right-player-score {
+    min-width: 120px;
+    padding: 15px;
+  }
+}
+
+@media (max-width: 768px) {
+  .game-container {
+    padding: 10px;
+  }
+  
+  .othello-game-board-container,
+  .tictactoe-game-board-container,
+  .chess-game-board-container {
+    flex-direction: row;
+    gap: 10px;
+    max-width: 100%;
+  }
+  
+  .othello-left-player-score,
+  .othello-right-player-score,
+  .tictactoe-left-player-score,
+  .tictactoe-right-player-score,
+  .chess-left-player-score,
+  .chess-right-player-score {
+    min-width: 120px;
+    min-height: 150px;
+    padding: 15px;
+  }
+  
+  .othello-left-player-score .othello-score,
+  .othello-right-player-score .othello-score,
+  .tictactoe-left-player-score .tictactoe-score,
+  .tictactoe-right-player-score .tictactoe-score,
+  .chess-left-player-score .chess-score,
+  .chess-right-player-score .chess-score {
+    font-size: 1.5rem;
+  }
+}

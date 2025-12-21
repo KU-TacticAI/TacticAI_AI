@@ -1,0 +1,376 @@
+.tictactoe-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 15px 20px;
+  font-family: 'Arial', sans-serif;
+  background: linear-gradient(135deg, #2c3e50, #34495e);
+  min-height: auto;
+  color: white;
+}
+
+.tictactoe-game-info {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.tictactoe-game-info h2 {
+  color: #ecf0f1;
+  margin-bottom: 20px;
+  font-size: 2rem;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+.tictactoe-game-stats {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 40px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 20px;
+  border-radius: 15px;
+  backdrop-filter: blur(10px);
+}
+
+.tictactoe-player-info {
+  display: flex;
+  gap: 30px;
+}
+
+.tictactoe-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 10px 15px;
+  border-radius: 10px;
+}
+
+.tictactoe-player.current-player {
+  background: rgba(243, 156, 18, 0.3);
+  border: 2px solid #f39c12;
+}
+
+.tictactoe-player-name {
+  font-weight: bold;
+  min-width: 100px;
+}
+
+.tictactoe-score {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #f39c12;
+}
+
+.tictactoe-turn-indicator {
+  color: #f39c12;
+  font-weight: bold;
+  margin-left: 5px;
+}
+
+.tictactoe-turn-info {
+  text-align: center;
+}
+
+.tictactoe-turn-info p {
+  margin: 5px 0;
+  font-size: 1rem;
+}
+
+.tictactoe-game-finished {
+  color: #e74c3c !important;
+  font-weight: bold;
+  font-size: 1.2rem !important;
+}
+
+.tictactoe-winning-line {
+  color: #27ae60 !important;
+  font-weight: bold;
+  font-size: 1.2rem !important;
+}
+
+.tictactoe-board-with-coordinates {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  position: relative;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+/* 게임 보드와 점수 레이아웃 - 가로 배치 */
+.tictactoe-game-board-container {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-end !important;
+  justify-content: space-between !important;
+  gap: 20px !important;
+  position: relative;
+  width: 100% !important;
+  max-width: 1200px !important;
+  margin: 20px auto 0 auto !important;
+}
+
+/* 최우선순위 가로 배치 강제 */
+div.tictactoe-game-board-container {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-end !important;
+  justify-content: space-between !important;
+  margin: 20px auto 0 auto !important;
+}
+
+.tictactoe-container .tictactoe-game-board-container {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-end !important;
+  justify-content: space-between !important;
+  margin: 20px auto 0 auto !important;
+}
+
+/* 왼쪽/오른쪽 플레이어 점수 영역 */
+.tictactoe-left-player-score,
+.tictactoe-right-player-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 25px;
+  border-radius: 15px;
+  backdrop-filter: blur(10px);
+  min-width: 180px;
+  height: auto;
+  flex-shrink: 0;
+}
+
+/* 플레이어 정보 스타일 */
+.tictactoe-left-player-score .tictactoe-player,
+.tictactoe-right-player-score .tictactoe-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 15px;
+  border-radius: 10px;
+  text-align: center;
+}
+
+/* 플레이어 이름 스타일 */
+.tictactoe-left-player-score .tictactoe-player-name,
+.tictactoe-right-player-score .tictactoe-player-name {
+  font-weight: bold;
+  font-size: 1.1rem;
+  margin-bottom: 5px;
+}
+
+/* 점수 스타일 */
+.tictactoe-left-player-score .tictactoe-score,
+.tictactoe-right-player-score .tictactoe-score {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #f39c12;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+.tictactoe-row-coordinates {
+  position: absolute;
+  left: -60px;
+  top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  z-index: 10;
+}
+
+.tictactoe-row-coordinate {
+  width: 30px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ecf0f1;
+  font-weight: bold;
+  font-size: 1.1rem;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+.tictactoe-col-coordinates {
+  display: flex;
+  gap: 5px;
+  margin-top: 5px;
+  margin-left: 15px;
+}
+
+.tictactoe-col-coordinate {
+  width: 80px;
+  height: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ecf0f1;
+  font-weight: bold;
+  font-size: 1.1rem;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+.tictactoe-board {
+  display: grid;
+  grid-template-columns: repeat(3, 80px);
+  grid-template-rows: repeat(3, 80px);
+  gap: 2px;
+  background: #2c3e50;
+  padding: 10px;
+  border-radius: 15px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+
+.tictactoe-board-row {
+  display: contents;
+}
+
+.tictactoe-cell {
+  width: 80px;
+  height: 80px;
+  background: #27ae60;
+  border: 2px solid #2c3e50;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  position: relative;
+  cursor: pointer;
+}
+
+.tictactoe-cell:hover {
+  background: #2ecc71;
+  transform: scale(1.02);
+}
+
+.tictactoe-cell.last-move {
+  box-shadow: 0 0 15px #f39c12;
+  border-color: #f39c12;
+}
+
+.tictactoe-cell.winning-cell {
+  background: #e8f6f3 !important;
+  border-color: #27ae60 !important;
+  box-shadow: 0 0 20px #27ae60 !important;
+}
+
+.tictactoe-mark {
+  font-size: 3rem;
+  font-weight: bold;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+  transition: all 0.3s ease;
+  animation: markPlace 0.3s ease-out;
+}
+
+.tictactoe-x-mark-inner {
+  color: #e74c3c;
+}
+
+.tictactoe-o-mark-inner {
+  color: #3498db;
+}
+
+/* 플레이어 정보용 작은 마크 */
+.tictactoe-x-mark-display,
+.tictactoe-o-mark-display {
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.tictactoe-x-mark-display {
+  background: radial-gradient(circle at 30% 30%, #e74c3c, #c0392b);
+  color: white;
+}
+
+.tictactoe-o-mark-display {
+  background: radial-gradient(circle at 30% 30%, #3498db, #2980b9);
+  color: white;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+  .tictactoe-game-board-container {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 20px !important;
+  }
+  
+  .tictactoe-left-player-score,
+  .tictactoe-right-player-score {
+    min-width: 100px;
+    min-height: 150px;
+    padding: 10px;
+  }
+  
+  .tictactoe-left-player-score .tictactoe-score,
+  .tictactoe-right-player-score .tictactoe-score {
+    font-size: 1.5rem;
+  }
+  
+  .tictactoe-board {
+    grid-template-columns: repeat(3, 60px);
+    grid-template-rows: repeat(3, 60px);
+  }
+  
+  .tictactoe-cell {
+    width: 60px;
+    height: 60px;
+  }
+  
+  .tictactoe-mark {
+    font-size: 2.2rem;
+  }
+  
+  .tictactoe-game-stats {
+    flex-direction: column;
+    gap: 20px;
+  }
+  
+  .tictactoe-row-coordinate {
+    width: 25px;
+    height: 60px;
+    font-size: 0.9rem;
+  }
+  
+  .tictactoe-col-coordinate {
+    width: 60px;
+    height: 20px;
+    font-size: 0.9rem;
+  }
+  
+  .tictactoe-row-coordinates {
+    left: -55px;
+  }
+  
+  .tictactoe-col-coordinates {
+    margin-left: 10px;
+  }
+}
+
+/* 애니메이션 효과 */
+@keyframes markPlace {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

@@ -1,0 +1,65 @@
+/* minimal reset */
+html,body,#root { height: 100%; margin: 0; font-family: Arial, Helvetica, sans-serif; }
+.game-container { padding: 8px; }
+
+/* Two-column layout for demo */
+.rows {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	padding: 12px;
+	box-sizing: border-box;
+}
+
+.two-column {
+	display: flex;
+	gap: 12px;
+	padding: 12px;
+	box-sizing: border-box;
+	width: 100%;
+}
+
+.controls {
+	padding: 12px;
+	border-bottom: 1px solid #e6e6e6;
+	background: #fafafa;
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	align-items: flex-start;
+	flex-wrap: wrap;
+}
+.controls-left { display:flex; flex-direction:column; gap:8px }
+.controls-row { display:flex; gap:12px; align-items:center; margin-bottom:8px; flex-wrap:wrap }
+.controls label { font-size: 14px; color: #333 }
+.controls input[type="number"] { width:64px; margin-left:6px; }
+.controls button { padding:6px 10px; border-radius:4px; border:1px solid #ccc; background:#fff; cursor:pointer }
+.controls button:hover { background:#f0f0f0 }
+.controls-right { display:flex; gap:12px; align-items:center; justify-content:flex-end }
+.controls-game { display:flex; flex-direction:column; align-items:flex-end; gap:4px; min-width:140px }
+.controls-game-name { font-size:12px; text-transform:capitalize; color:#333 }
+.controls-game-badges { display:flex; gap:6px }
+
+/* panel header and start status */
+.panel-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px }
+.panel-header .sid { font-weight:600; font-size:13px }
+.status { font-size:12px; padding:2px 6px; border-radius:4px; border:1px solid transparent }
+.status.pending { background:#fff6e6; color:#8a6d00; border-color:#f0c36a }
+.status.started { background:#e6ffed; color:#166b22; border-color:#a6f0b0 }
+.status.error { background:#ffecec; color:#8b1c1c; border-color:#f2a1a1 }
+.status.finished { background:#dfefff; color:#1a3c7a; border-color:#aec8ff }
+
+/* summary badges at top */
+.summary { display:flex; gap:12px; padding:12px; align-items:center }
+.summary-item { font-size:14px; color:#222 }
+.summary-badge { display:inline-block; min-width:28px; text-align:center; padding:4px 8px; margin-left:8px; background:#f3f3f3; border-radius:12px; border:1px solid #ddd }
+.panel {
+	flex: 1 1 0;
+	min-width: 320px;
+	border: 1px solid #ddd;
+	border-radius: 6px;
+	padding: 8px;
+	box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+	background: #fff;
+	overflow: auto;
+}

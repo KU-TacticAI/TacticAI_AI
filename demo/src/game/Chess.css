@@ -1,0 +1,378 @@
+.chess-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 15px 20px;
+  font-family: 'Arial', sans-serif;
+  background: linear-gradient(135deg, #2c3e50, #34495e);
+  min-height: auto;
+  color: white;
+}
+
+.chess-game-info {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.chess-game-info h2 {
+  color: #ecf0f1;
+  margin-bottom: 20px;
+  font-size: 2rem;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+.chess-game-stats {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 40px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 20px;
+  border-radius: 15px;
+  backdrop-filter: blur(10px);
+}
+
+.chess-player-info {
+  display: flex;
+  gap: 30px;
+}
+
+.chess-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 10px 15px;
+  border-radius: 10px;
+}
+
+.chess-player-name {
+  font-weight: bold;
+  min-width: 100px;
+}
+
+.chess-score {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #f39c12;
+}
+
+.chess-piece {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chess-white-piece-display,
+.chess-black-piece-display {
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.chess-white-piece-display {
+  background: radial-gradient(circle at 30% 30%, #ecf0f1, #bdc3c7);
+  color: #2c3e50;
+}
+
+.chess-black-piece-display {
+  background: radial-gradient(circle at 30% 30%, #2c3e50, #34495e);
+  color: white;
+}
+
+.chess-turn-info {
+  text-align: center;
+}
+
+.chess-turn-info p {
+  margin: 5px 0;
+  font-size: 1rem;
+}
+
+.chess-game-finished {
+  color: #e74c3c !important;
+  font-weight: bold;
+  font-size: 1.2rem !important;
+}
+
+.chess-board-with-coordinates {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  position: relative;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+/* 게임 보드와 점수 레이아웃 - 가로 배치 */
+.chess-game-board-container {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-end !important;
+  justify-content: space-between !important;
+  gap: 20px !important;
+  position: relative;
+  width: 100% !important;
+  max-width: 1200px !important;
+  margin: 20px auto 0 auto !important;
+}
+
+/* 최우선순위 가로 배치 강제 */
+div.chess-game-board-container {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-end !important;
+  justify-content: space-between !important;
+  margin: 20px auto 0 auto !important;
+}
+
+.chess-container .chess-game-board-container {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-end !important;
+  justify-content: space-between !important;
+  margin: 20px auto 0 auto !important;
+}
+
+/* 왼쪽/오른쪽 플레이어 점수 영역 */
+.chess-left-player-score,
+.chess-right-player-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 25px;
+  border-radius: 15px;
+  backdrop-filter: blur(10px);
+  min-width: 180px;
+  height: auto;
+  flex-shrink: 0;
+}
+
+/* 플레이어 정보 스타일 */
+.chess-left-player-score .chess-player,
+.chess-right-player-score .chess-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 15px;
+  border-radius: 10px;
+  text-align: center;
+}
+
+/* 플레이어 이름 스타일 */
+.chess-left-player-score .chess-player-name,
+.chess-right-player-score .chess-player-name {
+  font-weight: bold;
+  font-size: 1.1rem;
+  margin-bottom: 5px;
+}
+
+/* 점수 스타일 */
+.chess-left-player-score .chess-score,
+.chess-right-player-score .chess-score {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #f39c12;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+.chess-row-coordinates {
+  position: absolute;
+  left: -60px;
+  top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 10;
+}
+
+.chess-row-coordinate {
+  width: 30px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ecf0f1;
+  font-weight: bold;
+  font-size: 1.1rem;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+.chess-col-coordinates {
+  display: flex;
+  gap: 2px;
+  margin-top: 5px;
+  margin-left: 10px;
+}
+
+.chess-col-coordinate {
+  width: 60px;
+  height: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ecf0f1;
+  font-weight: bold;
+  font-size: 1.1rem;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+.chess-board {
+  display: grid;
+  grid-template-columns: repeat(8, 60px);
+  grid-template-rows: repeat(8, 60px);
+  gap: 0;
+  border: 3px solid #2c3e50;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+
+.chess-cell {
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  position: relative;
+  cursor: pointer;
+}
+
+.chess-cell-light {
+  background: #f0e8d6;
+}
+
+.chess-cell-dark {
+  background: #8b9e5f;
+}
+
+.chess-cell:hover {
+  filter: brightness(1.1);
+  transform: scale(1.05);
+}
+
+.chess-cell.chess-last-move {
+  box-shadow: inset 0 0 0 3px #f39c12;
+  background: rgba(243, 156, 18, 0.3) !important;
+}
+
+.chess-piece-symbol {
+  font-size: 2.5rem;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+  transition: all 0.3s ease;
+}
+
+.chess-white-piece .chess-piece-symbol {
+  color: #ecf0f1;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+
+.chess-black-piece .chess-piece-symbol {
+  color: #2c3e50;
+  text-shadow: 1px 1px 2px rgba(255,255,255,0.3);
+}
+
+.chess-game-status {
+  margin: 20px 0;
+  text-align: center;
+}
+
+.chess-game-result {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #e74c3c;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 15px 30px;
+  border-radius: 10px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+  .chess-game-board-container {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 20px !important;
+  }
+  
+  .chess-left-player-score,
+  .chess-right-player-score {
+    min-width: 100px;
+    min-height: 150px;
+    padding: 10px;
+  }
+  
+  .chess-left-player-score .chess-score,
+  .chess-right-player-score .chess-score {
+    font-size: 1.5rem;
+  }
+  
+  .chess-board {
+    grid-template-columns: repeat(8, 45px);
+    grid-template-rows: repeat(8, 45px);
+  }
+  
+  .chess-cell {
+    width: 45px;
+    height: 45px;
+  }
+  
+  .chess-piece-symbol {
+    font-size: 2rem;
+  }
+  
+  .chess-game-stats {
+    flex-direction: column;
+    gap: 20px;
+  }
+  
+  .chess-row-coordinate {
+    width: 25px;
+    height: 45px;
+    font-size: 0.9rem;
+  }
+  
+  .chess-col-coordinate {
+    width: 45px;
+    height: 20px;
+    font-size: 0.9rem;
+  }
+  
+  .chess-row-coordinates {
+    left: -55px;
+  }
+  
+  .chess-col-coordinates {
+    margin-left: 5px;
+  }
+}
+
+/* 애니메이션 효과 */
+@keyframes piecePlace {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.chess-piece-symbol {
+  animation: piecePlace 0.3s ease-out;
+}
